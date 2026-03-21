@@ -20,6 +20,8 @@ Any input line may include `"v": 1`. Future revisions may bump semantics; parser
 
 NDJSON v1 is the **stable, language-agnostic** contract for the CLI process: input line shapes, stdout event objects, and stderr error objects are part of that surface. Clients should tolerate **unknown fields** on input lines where possible. The optional `"v"` field is reserved for future semantic versioning of this stream. **Breaking changes** to these shapes would be introduced under a new documented version (for example a new `type` discriminator family or a successor document) or a new HTTP path revision (for example `/v3`) for the HTTP adapter—not silently in place.
 
+**v1.1 add-ons** (corridors, catalog assignment, radius zones) are specified in [ndjson-v1.1.md](ndjson-v1.1.md); they add new `type` / `event` discriminators and do not alter v1 shapes.
+
 ## Input: register a geofence
 
 Registers a polygon before processing updates. `polygon` must be a GeoJSON **Polygon** geometry object (including `type` and `coordinates`).
@@ -70,7 +72,7 @@ Geofence registration lines are never batched; they always take effect immediate
 
 ## Determinism
 
-Within one `ingest` batch, updates are processed in **ascending `id` order**. Emitted events for that batch are sorted by `(entity id, geofence id, enter before exit)`.
+Within one `ingest` batch, updates are processed in **ascending `id` order**. Emitted events for that batch are sorted by `(entity id, geofence id, enter before exit)`. If v1.1 zone kinds are registered, see [ndjson-v1.1.md](ndjson-v1.1.md) for full ordering across event categories.
 
 ## Example: pipe a file
 

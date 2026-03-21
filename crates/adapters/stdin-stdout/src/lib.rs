@@ -1,6 +1,6 @@
 //! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`GeoEngine`].
 
-use engine::{EngineError, Geofence, GeoEngine, PointUpdate};
+use engine::{EngineError, Geofence, GeoEngine, PointUpdate, RadiusZone};
 use polygon_json::polygon_from_json_value;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -47,13 +47,40 @@ enum InputLine {
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
     },
+    RegisterCorridor {
+        id: String,
+        polygon: Value,
+        #[serde(default, rename = "v")]
+        _protocol_version: Option<u8>,
+    },
+    RegisterCatalogRegion {
+        id: String,
+        polygon: Value,
+        #[serde(default, rename = "v")]
+        _protocol_version: Option<u8>,
+    },
+    RegisterRadius {
+        id: String,
+        center: [f64; 2],
+        radius: f64,
+        #[serde(default, rename = "v")]
+        _protocol_version: Option<u8>,
+    },
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "lowercase")]
+#[serde(tag = "event", rename_all = "snake_case")]
 enum NdjsonEvent {
     Enter { id: String, geofence: String },
     Exit { id: String, geofence: String },
+    EnterCorridor { id: String, corridor: String },
+    ExitCorridor { id: String, corridor: String },
+    Approach { id: String, zone: String },
+    Recede { id: String, zone: String },
+    AssignmentChanged {
+        id: String,
+        region: Option<String>,
+    },
 }
 
 impl From<engine::Event> for NdjsonEvent {
@@ -61,6 +88,17 @@ impl From<engine::Event> for NdjsonEvent {
         match ev {
             engine::Event::Enter { id, geofence } => NdjsonEvent::Enter { id, geofence },
             engine::Event::Exit { id, geofence } => NdjsonEvent::Exit { id, geofence },
+            engine::Event::EnterCorridor { id, corridor } => {
+                NdjsonEvent::EnterCorridor { id, corridor }
+            }
+            engine::Event::ExitCorridor { id, corridor } => {
+                NdjsonEvent::ExitCorridor { id, corridor }
+            }
+            engine::Event::Approach { id, zone } => NdjsonEvent::Approach { id, zone },
+            engine::Event::Recede { id, zone } => NdjsonEvent::Recede { id, zone },
+            engine::Event::AssignmentChanged { id, region } => {
+                NdjsonEvent::AssignmentChanged { id, region }
+            }
         }
     }
 }
@@ -111,6 +149,45 @@ where
                     }
                 };
                 if let Err(e) = engine.register_geofence(Geofence { id, polygon: poly }) {
+                    writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
+                }
+            }
+            InputLine::RegisterCorridor { id, polygon, .. } => {
+                let poly = match polygon_from_json_value(&polygon) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
+                        continue;
+                    }
+                };
+                if let Err(e) = engine.register_corridor(Geofence { id, polygon: poly }) {
+                    writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
+                }
+            }
+            InputLine::RegisterCatalogRegion { id, polygon, .. } => {
+                let poly = match polygon_from_json_value(&polygon) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
+                        continue;
+                    }
+                };
+                if let Err(e) = engine.register_catalog_region(Geofence { id, polygon: poly }) {
+                    writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
+                }
+            }
+            InputLine::RegisterRadius {
+                id,
+                center,
+                radius,
+                ..
+            } => {
+                if let Err(e) = engine.register_radius_zone(RadiusZone {
+                    id,
+                    cx: center[0],
+                    cy: center[1],
+                    r: radius,
+                }) {
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }

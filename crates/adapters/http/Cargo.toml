@@ -10,6 +10,7 @@ server = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
 engine = { path = "../../engine" }
+geo = "0.28"
 polygon-json = { path = "../../polygon-json" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

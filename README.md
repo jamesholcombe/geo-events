@@ -49,7 +49,7 @@ You should see two lines similar to:
 
   `{"type":"update","id":"c1","location":[x,y]}`
 
-Full contract: [protocol/ndjson-v1.md](protocol/ndjson-v1.md).
+Full contract: [protocol/ndjson-v1.md](protocol/ndjson-v1.md). Corridors, catalog assignment, and radius zones: [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md).
 
 ### Batching
 
@@ -72,7 +72,7 @@ cargo build -p cli --features http --bin geo-stream-http
 ./target/debug/geo-stream-http
 ```
 
-Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/ingest` with body `{"updates":[...]}` (see `crates/adapters/http`).
+Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor`, `POST /v2/register_catalog_region`, `POST /v2/register_radius`, `POST /v2/ingest` with body `{"updates":[...]}` (see [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md) and `crates/adapters/http`).
 
 ## Project layout
 
@@ -80,7 +80,7 @@ Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/ingest` with body
 |------|------|
 | `crates/engine` | `GeoEngine`, `Engine`, batch `ingest` |
 | `crates/spatial` | Point-in-polygon, `SpatialIndex`, naive index |
-| `crates/state` | `EntityState`, enter/exit events |
+| `crates/state` | `EntityState`, spatial events (geofence, corridor, radius, catalog) |
 | `crates/adapters/stdin-stdout` | NDJSON adapter |
 | `crates/adapters/http` | Optional HTTP (`server` feature) |
 | `crates/cli` | `geo-stream` / `geo-stream-http` binaries |
