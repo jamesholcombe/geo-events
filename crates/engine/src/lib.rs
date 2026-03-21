@@ -1,6 +1,6 @@
 //! Pure, transport-agnostic geospatial stream engine: batch ingest, zone registration.
 
-use spatial::{NaiveSpatialIndex, primary_catalog_region};
+use spatial::{primary_catalog_region, NaiveSpatialIndex};
 use state::{
     assignment_transition, corridor_membership_transitions, membership_transitions,
     radius_membership_transitions, sort_events_deterministic,

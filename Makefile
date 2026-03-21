@@ -35,6 +35,10 @@ test: ## Run all workspace tests
 test-cli: ## Run CLI crate tests (NDJSON integration / fixtures)
 	cargo test -p $(CLI_PKG)
 
+.PHONY: bench
+bench: ## Criterion benchmarks for the engine (`ingest` hot path)
+	cargo bench -p engine
+
 .PHONY: fmt
 fmt: ## Format with rustfmt
 	cargo fmt --all

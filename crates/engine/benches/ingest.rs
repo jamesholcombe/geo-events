@@ -1,0 +1,149 @@
+//! Criterion benchmarks for [`engine::Engine::ingest`].
+//!
+//! Run from the repo root: `cargo bench -p engine`
+//!
+//! Steady-state timings use a warmed engine so the first enter/exit transitions are not measured.
+
+use criterion::black_box;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use engine::{Engine, GeoEngine, Geofence, PointUpdate, RadiusZone};
+use geo::{LineString, Polygon};
+
+fn unit_square_at(origin_x: f64, origin_y: f64) -> Polygon<f64> {
+    Polygon::new(
+        LineString::from(vec![
+            (origin_x, origin_y),
+            (origin_x + 1.0, origin_y),
+            (origin_x + 1.0, origin_y + 1.0),
+            (origin_x, origin_y + 1.0),
+            (origin_x, origin_y),
+        ]),
+        vec![],
+    )
+}
+
+fn register_n_disjoint_geofences(engine: &mut Engine, n: usize) {
+    for i in 0..n {
+        let ox = (i as f64) * 2.0;
+        engine
+            .register_geofence(Geofence {
+                id: format!("zone-{i}"),
+                polygon: unit_square_at(ox, 0.0),
+            })
+            .unwrap();
+    }
+}
+
+/// One entity at a fixed point inside `zone-0`; every ingest still linear-scans all fences.
+fn ingest_steady_one_entity(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ingest_steady_one_entity");
+    for n in [32, 128, 512, 2048] {
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
+            let mut engine = Engine::new();
+            register_n_disjoint_geofences(&mut engine, n);
+            let batch = vec![PointUpdate {
+                id: "entity-1".into(),
+                x: 0.5,
+                y: 0.5,
+            }];
+            engine.ingest(batch.clone());
+            b.iter(|| {
+                let events = engine.ingest(batch.clone());
+                black_box(events)
+            });
+        });
+    }
+    group.finish();
+}
+
+/// Many entities in one batch; each update scans all fences (inside zone-0 only).
+fn ingest_steady_many_entities(c: &mut Criterion) {
+    let n_fences = 128;
+    let mut group = c.benchmark_group("ingest_steady_many_entities");
+    for m in [16, 64, 256, 1024] {
+        group.throughput(Throughput::Elements(m as u64));
+        group.bench_with_input(
+            BenchmarkId::new("batch_size", format!("n{n_fences}_m{m}")),
+            &m,
+            |b, &m| {
+                let mut engine = Engine::new();
+                register_n_disjoint_geofences(&mut engine, n_fences);
+                let batch: Vec<PointUpdate> = (0..m)
+                    .map(|i| PointUpdate {
+                        id: format!("e-{i}"),
+                        x: 0.5,
+                        y: 0.5,
+                    })
+                    .collect();
+                engine.ingest(batch.clone());
+                b.iter(|| {
+                    let events = engine.ingest(batch.clone());
+                    black_box(events)
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+/// Geofence + corridor + catalog + radius registered; single steady update.
+fn ingest_mixed_zones_steady(c: &mut Criterion) {
+    c.bench_function("ingest_mixed_zones_one_entity", |b| {
+        let mut engine = Engine::new();
+        for i in 0..32 {
+            engine
+                .register_geofence(Geofence {
+                    id: format!("fence-{i}"),
+                    polygon: unit_square_at((i as f64) * 2.0, 0.0),
+                })
+                .unwrap();
+        }
+        engine
+            .register_corridor(Geofence {
+                id: "corridor-1".into(),
+                polygon: unit_square_at(0.0, 10.0),
+            })
+            .unwrap();
+        engine
+            .register_catalog_region(Geofence {
+                id: "cat-a".into(),
+                polygon: unit_square_at(0.0, 0.0),
+            })
+            .unwrap();
+        engine
+            .register_catalog_region(Geofence {
+                id: "cat-b".into(),
+                polygon: unit_square_at(0.0, 0.0),
+            })
+            .unwrap();
+        engine
+            .register_radius_zone(RadiusZone {
+                id: "rad-1".into(),
+                cx: 0.5,
+                cy: 0.5,
+                r: 10.0,
+            })
+            .unwrap();
+
+        let batch = vec![PointUpdate {
+            id: "entity-1".into(),
+            x: 0.5,
+            y: 0.5,
+        }];
+        engine.ingest(batch.clone());
+
+        b.iter(|| {
+            let events = engine.ingest(batch.clone());
+            black_box(events)
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    ingest_steady_one_entity,
+    ingest_steady_many_entities,
+    ingest_mixed_zones_steady
+);
+criterion_main!(benches);

@@ -18,6 +18,8 @@ cargo test
 
 `cargo test -p cli` also runs NDJSON integration tests (v1 smoke + v1.1 fixtures under `crates/cli/tests/fixtures/`).
 
+**Benchmarks** (Criterion, engine `ingest`): `cargo bench -p engine` or `make bench`. Results and HTML plots land under `target/criterion/` when you run the full bench (omit `--no-run`).
+
 Release build (matches what the Dockerfile compiles):
 
 ```bash

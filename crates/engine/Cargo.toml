@@ -10,4 +10,9 @@ state = { path = "../state" }
 thiserror = "2"
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 geo = "0.28"
+
+[[bench]]
+name = "ingest"
+harness = false
