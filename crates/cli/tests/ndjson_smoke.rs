@@ -18,7 +18,12 @@ fn geo_stream_sample_input_produces_enter_then_exit() {
     common::assert_success_empty_stderr(&output);
 
     let lines = common::stdout_event_lines(&output);
-    assert_eq!(lines.len(), 2, "stdout:\n{}", String::from_utf8_lossy(&output.stdout));
+    assert_eq!(
+        lines.len(),
+        2,
+        "stdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 
     let first: serde_json::Value = serde_json::from_str(&lines[0]).expect("line 1 json");
     let second: serde_json::Value = serde_json::from_str(&lines[1]).expect("line 2 json");

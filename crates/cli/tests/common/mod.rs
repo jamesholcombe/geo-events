@@ -60,5 +60,9 @@ pub fn assert_success_empty_stderr(out: &Output) {
 
 pub fn stdout_event_lines(out: &Output) -> Vec<String> {
     let stdout = String::from_utf8(out.stdout.clone()).expect("utf-8 stdout");
-    stdout.lines().map(str::to_string).filter(|l| !l.is_empty()).collect()
+    stdout
+        .lines()
+        .map(str::to_string)
+        .filter(|l| !l.is_empty())
+        .collect()
 }

@@ -21,10 +21,7 @@ pub enum Event {
     ExitCorridor { id: String, corridor: String },
     Approach { id: String, zone: String },
     Recede { id: String, zone: String },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
-    },
+    AssignmentChanged { id: String, region: Option<String> },
 }
 
 /// Compute enter/exit events from geofence membership set diff.

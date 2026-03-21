@@ -2,7 +2,10 @@ use clap::Parser;
 use std::net::SocketAddr;
 
 #[derive(Parser, Debug)]
-#[command(name = "geo-stream-http", about = "Geospatial stream engine — HTTP JSON API")]
+#[command(
+    name = "geo-stream-http",
+    about = "Geospatial stream engine — HTTP JSON API"
+)]
 struct Args {
     /// Address to bind (e.g. 127.0.0.1:3000 or 0.0.0.0:8080)
     #[arg(long, default_value = "0.0.0.0:8080")]

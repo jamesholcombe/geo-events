@@ -1,6 +1,6 @@
 //! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`GeoEngine`].
 
-use engine::{EngineError, Geofence, GeoEngine, PointUpdate, RadiusZone};
+use engine::{EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
 use polygon_json::polygon_from_json_value;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -77,10 +77,7 @@ enum NdjsonEvent {
     ExitCorridor { id: String, corridor: String },
     Approach { id: String, zone: String },
     Recede { id: String, zone: String },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
-    },
+    AssignmentChanged { id: String, region: Option<String> },
 }
 
 impl From<engine::Event> for NdjsonEvent {
@@ -177,10 +174,7 @@ where
                 }
             }
             InputLine::RegisterRadius {
-                id,
-                center,
-                radius,
-                ..
+                id, center, radius, ..
             } => {
                 if let Err(e) = engine.register_radius_zone(RadiusZone {
                     id,

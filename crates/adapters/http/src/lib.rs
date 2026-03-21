@@ -8,9 +8,9 @@ mod server_impl {
     use axum::response::{IntoResponse, Response};
     use axum::routing::{get, post};
     use axum::{Json, Router};
-    use engine::{Engine, EngineError, Geofence, GeoEngine, PointUpdate, RadiusZone, SpatialError};
-    use polygon_json::PolygonJsonError;
+    use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone, SpatialError};
     use polygon_json::polygon_from_json_value;
+    use polygon_json::PolygonJsonError;
     use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -62,11 +62,7 @@ mod server_impl {
         }
 
         fn internal(message: impl Into<String>) -> Self {
-            Self::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error",
-                message,
-            )
+            Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
         }
     }
 
@@ -99,7 +95,9 @@ mod server_impl {
         }
     }
 
-    fn read_json<T: DeserializeOwned>(body: Result<Json<T>, JsonRejection>) -> Result<T, HttpError> {
+    fn read_json<T: DeserializeOwned>(
+        body: Result<Json<T>, JsonRejection>,
+    ) -> Result<T, HttpError> {
         body.map(|Json(v)| v)
             .map_err(|e| HttpError::invalid_json(e.to_string()))
     }
@@ -151,12 +149,30 @@ mod server_impl {
     #[derive(Debug, Serialize, ToSchema)]
     #[serde(tag = "event", rename_all = "snake_case")]
     enum EventJson {
-        Enter { id: String, geofence: String },
-        Exit { id: String, geofence: String },
-        EnterCorridor { id: String, corridor: String },
-        ExitCorridor { id: String, corridor: String },
-        Approach { id: String, zone: String },
-        Recede { id: String, zone: String },
+        Enter {
+            id: String,
+            geofence: String,
+        },
+        Exit {
+            id: String,
+            geofence: String,
+        },
+        EnterCorridor {
+            id: String,
+            corridor: String,
+        },
+        ExitCorridor {
+            id: String,
+            corridor: String,
+        },
+        Approach {
+            id: String,
+            zone: String,
+        },
+        Recede {
+            id: String,
+            zone: String,
+        },
         AssignmentChanged {
             id: String,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -257,12 +273,11 @@ mod server_impl {
         let body = read_json(body)?;
         let polygon = parse_polygon(&body.polygon)?;
         let mut eng = lock_engine(&engine)?;
-        eng
-            .register_geofence(Geofence {
-                id: body.id,
-                polygon,
-            })
-            .map_err(HttpError::from)?;
+        eng.register_geofence(Geofence {
+            id: body.id,
+            polygon,
+        })
+        .map_err(HttpError::from)?;
         Ok(StatusCode::NO_CONTENT)
     }
 
@@ -285,12 +300,11 @@ mod server_impl {
         let body = read_json(body)?;
         let polygon = parse_polygon(&body.polygon)?;
         let mut eng = lock_engine(&engine)?;
-        eng
-            .register_corridor(Geofence {
-                id: body.id,
-                polygon,
-            })
-            .map_err(HttpError::from)?;
+        eng.register_corridor(Geofence {
+            id: body.id,
+            polygon,
+        })
+        .map_err(HttpError::from)?;
         Ok(StatusCode::NO_CONTENT)
     }
 
@@ -313,12 +327,11 @@ mod server_impl {
         let body = read_json(body)?;
         let polygon = parse_polygon(&body.polygon)?;
         let mut eng = lock_engine(&engine)?;
-        eng
-            .register_catalog_region(Geofence {
-                id: body.id,
-                polygon,
-            })
-            .map_err(HttpError::from)?;
+        eng.register_catalog_region(Geofence {
+            id: body.id,
+            polygon,
+        })
+        .map_err(HttpError::from)?;
         Ok(StatusCode::NO_CONTENT)
     }
 
@@ -340,14 +353,13 @@ mod server_impl {
     ) -> Result<StatusCode, HttpError> {
         let body = read_json(body)?;
         let mut eng = lock_engine(&engine)?;
-        eng
-            .register_radius_zone(RadiusZone {
-                id: body.id,
-                cx: body.cx,
-                cy: body.cy,
-                r: body.r,
-            })
-            .map_err(HttpError::from)?;
+        eng.register_radius_zone(RadiusZone {
+            id: body.id,
+            cx: body.cx,
+            cy: body.cy,
+            r: body.r,
+        })
+        .map_err(HttpError::from)?;
         Ok(StatusCode::NO_CONTENT)
     }
 
@@ -392,7 +404,10 @@ mod server_impl {
             .route("/health", get(health_handler))
             .route("/v2/register_geofence", post(register_geofence_handler))
             .route("/v2/register_corridor", post(register_corridor_handler))
-            .route("/v2/register_catalog_region", post(register_catalog_handler))
+            .route(
+                "/v2/register_catalog_region",
+                post(register_catalog_handler),
+            )
             .route("/v2/register_radius", post(register_radius_handler))
             .route("/v2/ingest", post(ingest_handler))
             .layer(TraceLayer::new_for_http())
@@ -447,7 +462,10 @@ mod server_impl {
                 .await
                 .unwrap();
             assert_eq!(res.status(), StatusCode::OK);
-            let ct = res.headers().get(CONTENT_TYPE).and_then(|h| h.to_str().ok());
+            let ct = res
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|h| h.to_str().ok());
             assert!(
                 ct.is_some_and(|c| c.contains("json")),
                 "content-type: {ct:?}"
@@ -506,9 +524,7 @@ mod server_impl {
                         .method("POST")
                         .uri("/v2/register_radius")
                         .header("content-type", "application/json")
-                        .body(Body::from(
-                            r#"{"id":"dup","cx":0,"cy":0,"r":1}"#.as_bytes(),
-                        ))
+                        .body(Body::from(r#"{"id":"dup","cx":0,"cy":0,"r":1}"#.as_bytes()))
                         .unwrap(),
                 )
                 .await

@@ -17,9 +17,8 @@ pub enum PolygonJsonError {
 
 /// Parse `value` as a GeoJSON geometry and return a single polygon ring (exterior only).
 pub fn polygon_from_json_value(value: &Value) -> Result<Polygon<f64>, PolygonJsonError> {
-    let geom: Geometry = serde_json::from_value(value.clone()).map_err(|e| {
-        PolygonJsonError::InvalidGeometry(e.to_string())
-    })?;
+    let geom: Geometry = serde_json::from_value(value.clone())
+        .map_err(|e| PolygonJsonError::InvalidGeometry(e.to_string()))?;
     let g: geo::Geometry<f64> = geom
         .try_into()
         .map_err(|_| PolygonJsonError::UnsupportedGeometry)?;

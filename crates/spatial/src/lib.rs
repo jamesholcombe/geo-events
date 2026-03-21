@@ -3,7 +3,7 @@
 use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
 use geo::{LineString, Point, Polygon};
-use rstar::{AABB, RTree, RTreeObject};
+use rstar::{RTree, RTreeObject, AABB};
 use std::collections::BTreeSet;
 use std::fmt;
 use thiserror::Error;
@@ -156,7 +156,7 @@ fn primary_catalog_at_indexed(
         let f = &catalog[obj.index];
         if f.polygon.contains(&pt) {
             let id = f.id.as_str();
-            if min_id.map_or(true, |m| id < m) {
+            if min_id.is_none_or(|m| id < m) {
                 min_id = Some(id);
             }
         }
@@ -191,7 +191,10 @@ impl NaiveSpatialIndex {
         let env = polygon_aabb(&fence.polygon)?;
         self.fences.push(fence);
         let index = self.fences.len() - 1;
-        self.fence_tree.insert(IndexedPolygon { index, envelope: env });
+        self.fence_tree.insert(IndexedPolygon {
+            index,
+            envelope: env,
+        });
         Ok(())
     }
 
@@ -204,7 +207,10 @@ impl NaiveSpatialIndex {
         let env = polygon_aabb(&corridor.polygon)?;
         self.corridors.push(corridor);
         let index = self.corridors.len() - 1;
-        self.corridor_tree.insert(IndexedPolygon { index, envelope: env });
+        self.corridor_tree.insert(IndexedPolygon {
+            index,
+            envelope: env,
+        });
         Ok(())
     }
 
@@ -217,7 +223,10 @@ impl NaiveSpatialIndex {
         let env = polygon_aabb(&region.polygon)?;
         self.catalog.push(region);
         let index = self.catalog.len() - 1;
-        self.catalog_tree.insert(IndexedPolygon { index, envelope: env });
+        self.catalog_tree.insert(IndexedPolygon {
+            index,
+            envelope: env,
+        });
         Ok(())
     }
 
@@ -383,12 +392,11 @@ mod tests {
     #[test]
     fn naive_index_finds_fence() {
         let mut idx = NaiveSpatialIndex::new();
-        idx
-            .try_push(Geofence {
-                id: "a".into(),
-                polygon: square(),
-            })
-            .unwrap();
+        idx.try_push(Geofence {
+            id: "a".into(),
+            polygon: square(),
+        })
+        .unwrap();
         let hits = idx.containing_geofences((5.0, 5.0));
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "a");
@@ -423,18 +431,16 @@ mod tests {
     #[test]
     fn primary_catalog_at_matches_region_refs() {
         let mut idx = NaiveSpatialIndex::new();
-        idx
-            .try_push_catalog_region(Geofence {
-                id: "b".into(),
-                polygon: square(),
-            })
-            .unwrap();
-        idx
-            .try_push_catalog_region(Geofence {
-                id: "a".into(),
-                polygon: square(),
-            })
-            .unwrap();
+        idx.try_push_catalog_region(Geofence {
+            id: "b".into(),
+            polygon: square(),
+        })
+        .unwrap();
+        idx.try_push_catalog_region(Geofence {
+            id: "a".into(),
+            polygon: square(),
+        })
+        .unwrap();
         assert_eq!(idx.primary_catalog_at((5.0, 5.0)), Some("a".into()));
         assert_eq!(idx.primary_catalog_at((50.0, 5.0)), None);
     }
@@ -442,12 +448,11 @@ mod tests {
     #[test]
     fn duplicate_id_across_kinds_rejected() {
         let mut idx = NaiveSpatialIndex::new();
-        idx
-            .try_push(Geofence {
-                id: "x".into(),
-                polygon: square(),
-            })
-            .unwrap();
+        idx.try_push(Geofence {
+            id: "x".into(),
+            polygon: square(),
+        })
+        .unwrap();
         let err = idx
             .try_push_radius_zone(RadiusZone {
                 id: "x".into(),
@@ -465,12 +470,11 @@ mod tests {
         for i in 0..24 {
             let ox = (i as f64) * 3.0;
             let oy = (i as f64 % 5.0) * 2.0;
-            idx
-                .try_push(Geofence {
-                    id: format!("z{i}"),
-                    polygon: unit_square_at(ox, oy),
-                })
-                .unwrap();
+            idx.try_push(Geofence {
+                id: format!("z{i}"),
+                polygon: unit_square_at(ox, oy),
+            })
+            .unwrap();
         }
         let probes = [
             (0.5, 0.5),
@@ -491,12 +495,11 @@ mod tests {
     fn rtree_corridor_membership_matches_linear_scan() {
         let mut idx = NaiveSpatialIndex::new();
         for i in 0..16 {
-            idx
-                .try_push_corridor(Geofence {
-                    id: format!("c{i}"),
-                    polygon: unit_square_at(i as f64 * 2.0, 0.0),
-                })
-                .unwrap();
+            idx.try_push_corridor(Geofence {
+                id: format!("c{i}"),
+                polygon: unit_square_at(i as f64 * 2.0, 0.0),
+            })
+            .unwrap();
         }
         for p in [(0.5, 0.5), (2.5, 0.5), (100.0, 0.0)] {
             let mut rt = BTreeSet::new();
@@ -509,19 +512,17 @@ mod tests {
     fn rtree_primary_catalog_matches_linear_scan() {
         let mut idx = NaiveSpatialIndex::new();
         for i in 0..12 {
-            idx
-                .try_push_catalog_region(Geofence {
-                    id: format!("r{i:02}"),
-                    polygon: unit_square_at(0.0, i as f64 * 0.5),
-                })
-                .unwrap();
-        }
-        idx
-            .try_push_catalog_region(Geofence {
-                id: "r_overlap".into(),
-                polygon: unit_square_at(0.0, 0.0),
+            idx.try_push_catalog_region(Geofence {
+                id: format!("r{i:02}"),
+                polygon: unit_square_at(0.0, i as f64 * 0.5),
             })
             .unwrap();
+        }
+        idx.try_push_catalog_region(Geofence {
+            id: "r_overlap".into(),
+            polygon: unit_square_at(0.0, 0.0),
+        })
+        .unwrap();
         for p in [(0.5, 0.5), (0.5, 2.0), (0.5, 100.0)] {
             assert_eq!(
                 idx.primary_catalog_at(p),
