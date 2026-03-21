@@ -26,7 +26,7 @@ It is designed to run as a **standalone process** (CLI + NDJSON) or behind **thi
 - **Containers** standardize deployment; clients only need the **protocol** ([`ndjson-v1.md`](ndjson-v1.md)), not Rust.
 - **Optional HTTP v2** lets services integrate without subprocess management, still using the same **core engine** crate.
 
-HTTP v2 JSON request and response bodies are intended to match the same **engine semantics** as NDJSON v1; **event objects** in HTTP responses use the same JSON shape as **stdout** lines in the CLI protocol (enter/exit, `id`, `geofence`) so clients can share parsers.
+HTTP v2 JSON request and response bodies are intended to match the same **engine semantics** as NDJSON v1; **event objects** in HTTP responses use the same JSON shape as **stdout** lines in the CLI protocol (enter/exit, `id`, `geofence`) so clients can share parsers. The HTTP contract is also described by **`GET /openapi.json`** on the server (`openapi.json`).
 
 This separation (engine library + adapters) keeps **business logic** in one place and **integration glue** replaceable.
 

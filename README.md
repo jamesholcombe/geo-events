@@ -76,6 +76,8 @@ cargo build -p cli --features http --bin geo-stream-http
 
 - **`--listen`:** bind address (default `0.0.0.0:8080`).
 - **`GET /health`:** returns `{"status":"ok"}` (use for load balancers; readiness matches health for this single-process MVP).
+- **`GET /openapi.json`:** OpenAPI 3 document describing all HTTP routes and JSON shapes.
+- **Errors:** failed requests return JSON `{"error":{"code":"<stable code>","message":"..."}}` (for example `invalid_json`, `invalid_input`, `conflict`, `internal_error`) with an appropriate HTTP status.
 - **`RUST_LOG`:** set e.g. `RUST_LOG=info` for HTTP request tracing (requires `tracing-subscriber` init in the binary).
 
 Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor`, `POST /v2/register_catalog_region`, `POST /v2/register_radius`, `POST /v2/ingest` with body `{"updates":[...]}` (see [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md) and `crates/adapters/http`).
