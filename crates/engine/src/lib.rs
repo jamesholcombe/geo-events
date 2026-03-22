@@ -13,7 +13,7 @@ pub use rules::{
 };
 
 pub use spatial::{Geofence, RadiusZone, SpatialError};
-pub use state::{EntityState, Event};
+pub use state::{EntityState, Event, GeofenceDwell};
 
 /// Single location observation for an entity.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +45,8 @@ pub enum EngineError {
 /// In-memory engine: R-tree–accelerated polygon queries + per-entity membership state.
 pub struct Engine {
     spatial: NaiveSpatialIndex,
+    /// Per geofence id: minimum inside/outside dwell before enter/exit events.
+    geofence_dwell: HashMap<String, GeofenceDwell>,
     entities: HashMap<String, EntityState>,
     /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
@@ -55,6 +57,7 @@ impl fmt::Debug for Engine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Engine")
             .field("spatial", &self.spatial)
+            .field("geofence_dwell", &self.geofence_dwell.len())
             .field("entities", &self.entities)
             .field("rules", &self.rules.len())
             .finish()
@@ -65,6 +68,7 @@ impl Default for Engine {
     fn default() -> Self {
         Self {
             spatial: NaiveSpatialIndex::default(),
+            geofence_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
@@ -80,10 +84,23 @@ impl Engine {
     pub fn with_rules(rules: Vec<Box<dyn SpatialRule>>) -> Self {
         Self {
             spatial: NaiveSpatialIndex::default(),
+            geofence_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules,
         }
+    }
+
+    /// Register a geofence with dwell / exit-debounce parameters (see [`GeofenceDwell`]).
+    pub fn register_geofence_with_dwell(
+        &mut self,
+        geofence: Geofence,
+        dwell: GeofenceDwell,
+    ) -> Result<(), EngineError> {
+        let id = geofence.id.clone();
+        self.spatial.try_push(geofence)?;
+        self.geofence_dwell.insert(id, dwell);
+        Ok(())
     }
 
     /// Sort updates by entity id, run `GeoEngine::process_event` for each, then `state::sort_events_deterministic` on the combined output.
@@ -100,7 +117,9 @@ impl Engine {
 
 impl GeoEngine for Engine {
     fn register_geofence(&mut self, geofence: Geofence) -> Result<(), EngineError> {
+        let id = geofence.id.clone();
         self.spatial.try_push(geofence)?;
+        self.geofence_dwell.insert(id, GeofenceDwell::default());
         Ok(())
     }
 
@@ -122,18 +141,26 @@ impl GeoEngine for Engine {
     fn process_event(&mut self, update: PointUpdate) -> Vec<Event> {
         let mut events = Vec::new();
         let p = (update.x, update.y);
-        let st = self.entities.entry(update.id.clone()).or_default();
-        let entity_id = update.id.as_str();
-        let spatial = &self.spatial;
-        let scratch = &mut self.membership_scratch;
         let t_ms = update.t_ms;
+        let entity_id = update.id.as_str();
+
+        let Engine {
+            spatial,
+            geofence_dwell,
+            entities,
+            membership_scratch,
+            rules,
+        } = self;
+
+        let st = entities.entry(update.id.clone()).or_default();
         let ctx = rules::RuleContext {
             entity_id,
             position: p,
             at_ms: t_ms,
+            geofence_dwell,
         };
-        for rule in &self.rules {
-            rule.apply(spatial, &ctx, st, scratch, &mut events);
+        for rule in rules.iter() {
+            rule.apply(spatial, &ctx, st, membership_scratch, &mut events);
         }
         st.position = Some(p);
         st.last_t_ms = Some(t_ms);
@@ -362,6 +389,87 @@ mod tests {
         assert!(matches!(
             &ev2[0],
             Event::ExitCorridor { id, corridor, .. } if id == "c1" && corridor == "cor-1"
+        ));
+    }
+
+    #[test]
+    fn geofence_min_inside_ms_delays_enter_until_engine() {
+        let mut e = Engine::new();
+        e.register_geofence_with_dwell(
+            Geofence {
+                id: "zone-1".into(),
+                polygon: unit_square(),
+            },
+            GeofenceDwell {
+                min_inside_ms: Some(50),
+                min_outside_ms: None,
+            },
+        )
+        .unwrap();
+
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 0.5,
+                y: 0.5,
+                t_ms: 0,
+            })
+            .is_empty());
+
+        let ev = e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 0.5,
+            y: 0.5,
+            t_ms: 50,
+        });
+        assert_eq!(ev.len(), 1);
+        assert!(matches!(
+            &ev[0],
+            Event::Enter { id, geofence, t_ms: 50, .. } if id == "c1" && geofence == "zone-1"
+        ));
+    }
+
+    #[test]
+    fn geofence_min_outside_ms_debounces_exit() {
+        let mut e = Engine::new();
+        e.register_geofence_with_dwell(
+            Geofence {
+                id: "zone-1".into(),
+                polygon: unit_square(),
+            },
+            GeofenceDwell {
+                min_inside_ms: None,
+                min_outside_ms: Some(30),
+            },
+        )
+        .unwrap();
+
+        e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 0.5,
+            y: 0.5,
+            t_ms: 0,
+        });
+
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 10.0,
+                t_ms: 0,
+            })
+            .is_empty());
+
+        let ev = e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 10.0,
+            y: 10.0,
+            t_ms: 30,
+        });
+        assert_eq!(ev.len(), 1);
+        assert!(matches!(
+            &ev[0],
+            Event::Exit { id, geofence, t_ms: 30, .. } if id == "c1" && geofence == "zone-1"
         ));
     }
 }

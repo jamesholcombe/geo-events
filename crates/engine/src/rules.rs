@@ -2,16 +2,17 @@
 
 use spatial::NaiveSpatialIndex;
 use state::{
-    assignment_transition, corridor_membership_transitions, membership_transitions,
-    radius_membership_transitions, EntityState, Event,
+    assignment_transition, corridor_membership_transitions, geofence_membership_with_dwell,
+    radius_membership_transitions, EntityState, Event, GeofenceDwell,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 /// Per-update inputs shared across [`SpatialRule::apply`].
 pub struct RuleContext<'a> {
     pub entity_id: &'a str,
     pub position: (f64, f64),
     pub at_ms: u64,
+    pub geofence_dwell: &'a HashMap<String, GeofenceDwell>,
 }
 
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
@@ -41,13 +42,16 @@ impl SpatialRule for GeofenceRule {
     ) {
         scratch.clear();
         spatial.geofence_membership_at(ctx.position, scratch);
-        out.extend(membership_transitions(
+        geofence_membership_with_dwell(
             ctx.entity_id,
-            &state.inside,
-            scratch,
             ctx.at_ms,
-        ));
-        std::mem::swap(&mut state.inside, scratch);
+            scratch,
+            &mut state.inside,
+            &mut state.geofence_enter_pending,
+            &mut state.geofence_exit_pending,
+            ctx.geofence_dwell,
+            out,
+        );
     }
 }
 

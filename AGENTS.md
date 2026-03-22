@@ -202,13 +202,13 @@ These differ from the target model above; adapters and tests should match **what
 **Engine surface** (`crates/engine`):
 
 - Trait `GeoEngine`: zone registration + **`process_event(&mut self, PointUpdate) -> Vec<Event>`**.
-- **`Engine`**: `process_batch` (sorted multi-update + global event order), **`with_rules`**, default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
+- **`Engine`**: `process_batch`, **`with_rules`**, **`register_geofence_with_dwell`** (`GeofenceDwell`: min inside before Enter, min outside before Exit). Plain **`register_geofence`** uses default (instant) dwell. Default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
 - Input update: `PointUpdate { id, x, y, t_ms }` (Unix epoch milliseconds). Wire JSON field `t` in adapters.
 - Concrete type: `Engine` backed by `spatial::NaiveSpatialIndex` and `HashMap<String, EntityState>`.
 
 **Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog); each variant includes **`t_ms`** (same as the causing `PointUpdate`). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
 
-**Per-entity state** (`crates/state`): `EntityState` holds `position: Option<(f64, f64)>`, membership sets (`inside`, `inside_corridor`, `inside_radius` as `BTreeSet<String>`), and `catalog_region: Option<String>`.
+**Per-entity state** (`crates/state`): `EntityState` holds `position`, `last_t_ms`, geofence membership plus **`geofence_enter_pending` / `geofence_exit_pending`** (dwell timers), corridor/radius sets, and `catalog_region`.
 
 **Supporting crate:** `crates/polygon-json` parses GeoJSON polygons for HTTP and stdin-stdout adapters (not used inside `crates/engine`).
 
