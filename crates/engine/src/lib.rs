@@ -1,12 +1,16 @@
-//! Pure, transport-agnostic geospatial stream engine: batch ingest, zone registration.
+//! Pure, transport-agnostic geospatial stream engine: zone registration, single-update processing.
+
+mod rules;
 
 use spatial::NaiveSpatialIndex;
-use state::{
-    assignment_transition, corridor_membership_transitions, membership_transitions,
-    radius_membership_transitions, sort_events_deterministic,
-};
+use state::sort_events_deterministic;
 use std::collections::{BTreeSet, HashMap};
+use std::fmt;
 use thiserror::Error;
+
+pub use rules::{
+    default_rules, CatalogRule, CorridorRule, GeofenceRule, RadiusRule, SpatialRule,
+};
 
 pub use spatial::{Geofence, RadiusZone, SpatialError};
 pub use state::{EntityState, Event};
@@ -19,13 +23,15 @@ pub struct PointUpdate {
     pub y: f64,
 }
 
-/// Engine API: register zones and ingest batches of points.
+/// Engine API: zone registration and single-update processing.
 pub trait GeoEngine {
     fn register_geofence(&mut self, geofence: Geofence) -> Result<(), EngineError>;
     fn register_corridor(&mut self, corridor: Geofence) -> Result<(), EngineError>;
     fn register_catalog_region(&mut self, region: Geofence) -> Result<(), EngineError>;
     fn register_radius_zone(&mut self, zone: RadiusZone) -> Result<(), EngineError>;
-    fn ingest(&mut self, batch: Vec<PointUpdate>) -> Vec<Event>;
+
+    /// Process one location update. For multiple updates with cross-update event ordering, use [`Engine::process_batch`].
+    fn process_event(&mut self, update: PointUpdate) -> Vec<Event>;
 }
 
 #[derive(Debug, Error)]
@@ -35,17 +41,58 @@ pub enum EngineError {
 }
 
 /// In-memory engine: R-tree–accelerated polygon queries + per-entity membership state.
-#[derive(Debug, Default)]
 pub struct Engine {
     spatial: NaiveSpatialIndex,
     entities: HashMap<String, EntityState>,
-    /// Reused between membership tiers to avoid cloning [`EntityState`] sets each ingest.
+    /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
+    rules: Vec<Box<dyn SpatialRule>>,
+}
+
+impl fmt::Debug for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Engine")
+            .field("spatial", &self.spatial)
+            .field("entities", &self.entities)
+            .field("rules", &self.rules.len())
+            .finish()
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self {
+            spatial: NaiveSpatialIndex::default(),
+            entities: HashMap::new(),
+            membership_scratch: BTreeSet::new(),
+            rules: rules::default_rules(),
+        }
+    }
 }
 
 impl Engine {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_rules(rules: Vec<Box<dyn SpatialRule>>) -> Self {
+        Self {
+            spatial: NaiveSpatialIndex::default(),
+            entities: HashMap::new(),
+            membership_scratch: BTreeSet::new(),
+            rules,
+        }
+    }
+
+    /// Sort updates by entity id, run `GeoEngine::process_event` for each, then `state::sort_events_deterministic` on the combined output.
+    pub fn process_batch(&mut self, mut batch: Vec<PointUpdate>) -> Vec<Event> {
+        batch.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut events = Vec::new();
+        for u in batch {
+            events.extend(self.process_event(u));
+        }
+        sort_events_deterministic(&mut events);
+        events
     }
 }
 
@@ -70,56 +117,17 @@ impl GeoEngine for Engine {
         Ok(())
     }
 
-    fn ingest(&mut self, mut batch: Vec<PointUpdate>) -> Vec<Event> {
-        batch.sort_by(|a, b| a.id.cmp(&b.id));
+    fn process_event(&mut self, update: PointUpdate) -> Vec<Event> {
         let mut events = Vec::new();
-
+        let p = (update.x, update.y);
+        let st = self.entities.entry(update.id.clone()).or_default();
+        let entity_id = update.id.as_str();
         let spatial = &self.spatial;
-        let entities = &mut self.entities;
-        let membership_scratch = &mut self.membership_scratch;
-
-        for update in batch {
-            let p = (update.x, update.y);
-            let st = entities.entry(update.id.clone()).or_default();
-            let entity_id = update.id.as_str();
-
-            membership_scratch.clear();
-            spatial.geofence_membership_at(p, membership_scratch);
-            events.extend(membership_transitions(
-                entity_id,
-                &st.inside,
-                membership_scratch,
-            ));
-            std::mem::swap(&mut st.inside, membership_scratch);
-
-            membership_scratch.clear();
-            spatial.corridor_membership_at(p, membership_scratch);
-            events.extend(corridor_membership_transitions(
-                entity_id,
-                &st.inside_corridor,
-                membership_scratch,
-            ));
-            std::mem::swap(&mut st.inside_corridor, membership_scratch);
-
-            membership_scratch.clear();
-            spatial.radius_membership_at(p, membership_scratch);
-            events.extend(radius_membership_transitions(
-                entity_id,
-                &st.inside_radius,
-                membership_scratch,
-            ));
-            std::mem::swap(&mut st.inside_radius, membership_scratch);
-
-            let new_catalog = spatial.primary_catalog_at(p);
-            events.extend(assignment_transition(
-                entity_id,
-                &st.catalog_region,
-                &new_catalog,
-            ));
-            st.catalog_region = new_catalog;
-            st.position = Some(p);
+        let scratch = &mut self.membership_scratch;
+        for rule in &self.rules {
+            rule.apply(spatial, entity_id, p, st, scratch, &mut events);
         }
-        sort_events_deterministic(&mut events);
+        st.position = Some(p);
         events
     }
 }
@@ -144,6 +152,38 @@ mod tests {
     }
 
     #[test]
+    fn process_event_enter_then_exit_geofence() {
+        let mut e = Engine::new();
+        e.register_geofence(Geofence {
+            id: "zone-1".into(),
+            polygon: unit_square(),
+        })
+        .unwrap();
+
+        let ev1 = e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 0.5,
+            y: 0.5,
+        });
+        assert_eq!(ev1.len(), 1);
+        assert!(matches!(
+            &ev1[0],
+            Event::Enter { id, geofence } if id == "c1" && geofence == "zone-1"
+        ));
+
+        let ev2 = e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 5.0,
+            y: 5.0,
+        });
+        assert_eq!(ev2.len(), 1);
+        assert!(matches!(
+            &ev2[0],
+            Event::Exit { id, geofence } if id == "c1" && geofence == "zone-1"
+        ));
+    }
+
+    #[test]
     fn enter_then_exit_square() {
         let mut e = Engine::new();
         e.register_geofence(Geofence {
@@ -152,7 +192,7 @@ mod tests {
         })
         .unwrap();
 
-        let ev1 = e.ingest(vec![PointUpdate {
+        let ev1 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
@@ -163,7 +203,7 @@ mod tests {
             Event::Enter { id, geofence } if id == "c1" && geofence == "zone-1"
         ));
 
-        let ev2 = e.ingest(vec![PointUpdate {
+        let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
@@ -195,7 +235,7 @@ mod tests {
                 y: 0.5,
             },
         ];
-        let ev = e.ingest(batch);
+        let ev = e.process_batch(batch);
         assert_eq!(ev.len(), 2);
         assert!(matches!(&ev[0], Event::Enter { id, .. } if id == "a"));
         assert!(matches!(&ev[1], Event::Enter { id, .. } if id == "b"));
@@ -215,7 +255,7 @@ mod tests {
         })
         .unwrap();
 
-        let ev1 = e.ingest(vec![PointUpdate {
+        let ev1 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
@@ -226,7 +266,7 @@ mod tests {
             Event::AssignmentChanged { id, region: Some(r) } if id == "c1" && r == "region-a"
         ));
 
-        let ev2 = e.ingest(vec![PointUpdate {
+        let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
@@ -249,7 +289,7 @@ mod tests {
         })
         .unwrap();
 
-        let ev1 = e.ingest(vec![PointUpdate {
+        let ev1 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 1.0,
             y: 0.0,
@@ -260,7 +300,7 @@ mod tests {
             Event::Approach { id, zone } if id == "c1" && zone == "rad-1"
         ));
 
-        let ev2 = e.ingest(vec![PointUpdate {
+        let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 10.0,
             y: 0.0,
@@ -281,7 +321,7 @@ mod tests {
         })
         .unwrap();
 
-        let ev1 = e.ingest(vec![PointUpdate {
+        let ev1 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
@@ -292,7 +332,7 @@ mod tests {
             Event::EnterCorridor { id, corridor } if id == "c1" && corridor == "cor-1"
         ));
 
-        let ev2 = e.ingest(vec![PointUpdate {
+        let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,

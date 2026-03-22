@@ -36,7 +36,7 @@ test-cli: ## Run CLI crate tests (NDJSON integration / fixtures)
 	cargo test -p $(CLI_PKG)
 
 .PHONY: bench
-bench: ## Criterion benchmarks for the engine (`ingest` hot path)
+bench: ## Criterion benchmarks for the engine (`process_batch` hot path)
 	cargo bench -p engine
 
 .PHONY: fmt

@@ -1,6 +1,6 @@
-//! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`GeoEngine`].
+//! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`engine::Engine`].
 
-use engine::{EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
+use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
 use polygon_json::polygon_from_json_value;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,7 +21,7 @@ pub enum StdioAdapterError {
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
-    /// Number of point updates per `ingest` call. `0` means buffer all updates until EOF, then one ingest.
+    /// Number of point updates per `process_batch` call. `0` means buffer all updates until EOF, then one batch.
     pub batch_size: usize,
 }
 
@@ -106,8 +106,8 @@ struct ErrorLine {
 }
 
 /// Read NDJSON from `reader`, write events to `out`, errors to `err`.
-pub fn run<R, O, E, G>(
-    engine: &mut G,
+pub fn run<R, O, E>(
+    engine: &mut Engine,
     reader: R,
     mut out: O,
     mut err: E,
@@ -117,7 +117,6 @@ where
     R: BufRead,
     O: Write,
     E: Write,
-    G: GeoEngine,
 {
     let mut pending: Vec<PointUpdate> = Vec::new();
     let mut line_no: u64 = 0;
@@ -206,13 +205,13 @@ where
     Ok(())
 }
 
-fn flush_batch<O: Write, G: GeoEngine>(
-    engine: &mut G,
+fn flush_batch<O: Write>(
+    engine: &mut Engine,
     pending: &mut Vec<PointUpdate>,
     out: &mut O,
 ) -> Result<(), StdioAdapterError> {
     let batch = std::mem::take(pending);
-    let events = engine.ingest(batch);
+    let events = engine.process_batch(batch);
     for ev in events {
         let line: NdjsonEvent = ev.into();
         writeln!(out, "{}", serde_json::to_string(&line)?)?;

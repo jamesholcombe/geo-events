@@ -61,7 +61,7 @@ Catalog assignment (`region` is `null` when not inside any catalog polygon):
 
 ## Event ordering (determinism)
 
-Within one `ingest` batch, updates are still processed in **ascending entity `id`**. For each update, emitted events are sorted stably by:
+Within one `process_batch` call, updates are still processed in **ascending entity `id`**. For each update, emitted events are sorted stably by:
 
 1. Entity `id`
 2. Category: **geofence** (`enter` / `exit`), then **corridor**, then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)

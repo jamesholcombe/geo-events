@@ -18,7 +18,7 @@ cargo test
 
 `cargo test -p cli` also runs NDJSON integration tests (v1 smoke + v1.1 fixtures under `crates/cli/tests/fixtures/`).
 
-**Benchmarks** (Criterion, engine `ingest`): `cargo bench -p engine` or `make bench`. Results and HTML plots land under `target/criterion/` when you run the full bench (omit `--no-run`).
+**Benchmarks** (Criterion, engine `process_batch`): `cargo bench -p engine` or `make bench`. Results and HTML plots land under `target/criterion/` when you run the full bench (omit `--no-run`).
 
 Release build (matches what the Dockerfile compiles):
 
@@ -62,8 +62,8 @@ cargo run -p cli --bin geo-stream -- --batch-size 0 -- < examples/sample-input.n
 ```
 
 - `--batch-size 1` (default): one `update` line → one engine batch.
-- `--batch-size N` (`N > 1`): buffer `N` updates, then ingest.
-- `--batch-size 0`: buffer all updates until EOF, then one ingest.
+- `--batch-size N` (`N > 1`): buffer `N` updates, then `process_batch`.
+- `--batch-size 0`: buffer all updates until EOF, then one `process_batch`.
 
 Fence registration lines are always applied immediately; they are not batched.
 
@@ -88,7 +88,7 @@ Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor
 
 | Path | Role |
 |------|------|
-| `crates/engine` | `GeoEngine`, `Engine`, batch `ingest` |
+| `crates/engine` | `GeoEngine`, `Engine`, `process_event`, `process_batch`, `SpatialRule` |
 | `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree (`NaiveSpatialIndex`) |
 | `crates/state` | `EntityState`, spatial events (geofence, corridor, radius, catalog) |
 | `crates/adapters/stdin-stdout` | NDJSON adapter |

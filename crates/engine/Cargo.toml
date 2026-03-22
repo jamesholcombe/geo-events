@@ -2,7 +2,7 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
-description = "Pure batch geospatial stream engine"
+description = "Pure geospatial stream engine"
 
 [dependencies]
 spatial = { path = "../spatial" }
@@ -14,5 +14,5 @@ criterion = { version = "0.5", features = ["html_reports"] }
 geo = "0.28"
 
 [[bench]]
-name = "ingest"
+name = "process_batch"
 harness = false

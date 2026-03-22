@@ -1,4 +1,4 @@
-//! Optional HTTP adapter (protocol v2 sketch): JSON batch ingest, JSON events response.
+//! Optional HTTP adapter (protocol v2 sketch): JSON batch updates, JSON events response.
 
 #[cfg(feature = "server")]
 mod server_impl {
@@ -389,7 +389,11 @@ mod server_impl {
                 y: u.y,
             })
             .collect();
-        let events: Vec<EventJson> = eng.ingest(updates).into_iter().map(Into::into).collect();
+        let events: Vec<EventJson> = eng
+            .process_batch(updates)
+            .into_iter()
+            .map(Into::into)
+            .collect();
         Ok(Json(events))
     }
 

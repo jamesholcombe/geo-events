@@ -64,15 +64,15 @@ Exit:
 
 The `geo-stream` binary accepts `--batch-size N`:
 
-- **`N = 1` (default):** each `update` line triggers one engine `ingest` of a single point (streaming-friendly).
-- **`N > 1`:** buffer `N` updates then call `ingest` once with that batch.
-- **`N = 0`:** buffer **all** updates until EOF, then a single `ingest`.
+- **`N = 1` (default):** each `update` line triggers one engine `process_batch` of a single point (streaming-friendly).
+- **`N > 1`:** buffer `N` updates then call `process_batch` once with that batch.
+- **`N = 0`:** buffer **all** updates until EOF, then a single `process_batch`.
 
 Geofence registration lines are never batched; they always take effect immediately.
 
 ## Determinism
 
-Within one `ingest` batch, updates are processed in **ascending `id` order**. Emitted events for that batch are sorted by `(entity id, geofence id, enter before exit)`. If v1.1 zone kinds are registered, see [ndjson-v1.1.md](ndjson-v1.1.md) for full ordering across event categories.
+Within one `process_batch` call, updates are processed in **ascending `id` order**. Emitted events for that batch are sorted by `(entity id, geofence id, enter before exit)`. If v1.1 zone kinds are registered, see [ndjson-v1.1.md](ndjson-v1.1.md) for full ordering across event categories.
 
 ## Example: pipe a file
 

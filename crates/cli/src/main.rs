@@ -9,7 +9,7 @@ use stdin_stdout::{run, RunConfig};
     about = "Geospatial stream engine — NDJSON stdin/stdout"
 )]
 struct Args {
-    /// Point updates per engine ingest. Use `0` to buffer all updates until EOF (one ingest).
+    /// Point updates per engine `process_batch`. Use `0` to buffer all updates until EOF (one batch).
     #[arg(long, default_value_t = 1)]
     batch_size: usize,
 }

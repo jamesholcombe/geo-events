@@ -14,8 +14,8 @@ Instructions for humans and **automated coding agents** working in this reposito
 |------|--------|
 | Engine owns logic | Core processing lives in `crates/engine`. Deterministic, no IO, no protocol types leaking in. |
 | Adapters are thin | `crates/cli`, `crates/adapters/*`: parse/serialize, call engine, return results. No spatial rules, no business logic, no owning application state. |
-| Event-first API | **Target:** `process_event`-style single-update handling; batch is only a loop. **Today:** primary entrypoint is `GeoEngine::ingest(batch)`. |
-| Spatial is pluggable | **Target:** traits/composition (e.g. `SpatialRule`), not closed `match` trees in core. **Today:** orchestration is explicit in `Engine::ingest` calling `state` transition helpers; still avoid growing ad-hoc `match`es—extract when adding rules. |
+| Event-first API | Core path is **`GeoEngine::process_event`**. Multi-update ordering uses **`Engine::process_batch`** (sort ids → `process_event` each → global `sort_events_deterministic`). |
+| Spatial is pluggable | Default pipeline is **`SpatialRule`** implementations composed in **`Engine`** (`default_rules()`). Add rules via **`Engine::with_rules`**. |
 | State is explicit | Transitions are `(old_state, event) → (new_state, outputs)`; no hidden cross-module mutation. |
 | Errors | Prefer `Result`; avoid panics in engine/state/spatial core paths. |
 
@@ -96,7 +96,7 @@ for event in events {
 
 Do **not** design core logic around batches.
 
-**Today:** the shipped API is `ingest(&mut self, batch: Vec<PointUpdate>)`; treat that as the batch wrapper to migrate, not the long-term shape.
+**Today:** `process_event` on `GeoEngine`; batch helper `Engine::process_batch` only on the concrete engine.
 
 ### 3. Explicit state model
 
@@ -136,7 +136,7 @@ The spatial crate **must**:
 - Support efficient point → region lookup.
 - Avoid full scans where an index applies.
 
-**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for geofences, corridors, and catalog regions. **Radius zones** are a linear scan over registered disks. Zones are registered incrementally (per insert), not rebuilt each ingest.
+**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for geofences, corridors, and catalog regions. **Radius zones** are a linear scan over registered disks. Zones are registered incrementally (per insert), not rebuilt each update.
 
 ### 6. Protocol is a contract
 
@@ -154,7 +154,7 @@ Adapters **must not**: implement spatial logic, own long-lived engine state beyo
 
 | Crate | Responsibility |
 |-------|----------------|
-| `crates/engine` | Owns event processing; exposes `GeoEngine` (zone registration + `ingest`). **Direction:** add or migrate to `process_event`-style single-update handling. |
+| `crates/engine` | Owns event processing; `GeoEngine` (`process_event` + registration), `Engine` (`process_batch`, `SpatialRule` pipeline). |
 | `crates/state` | Defines `EntityState` and state transitions; deterministic and testable. |
 | `crates/spatial` | Spatial primitives, geometry, spatial indexing (`SpatialIndex`); **no** business logic. |
 | `crates/adapters/*` | IO boundaries; protocol parsing and serialization only. |
@@ -201,11 +201,12 @@ These differ from the target model above; adapters and tests should match **what
 
 **Engine surface** (`crates/engine`):
 
-- Trait `GeoEngine`: `register_geofence`, `register_corridor`, `register_catalog_region`, `register_radius_zone`, and **`ingest(&mut self, batch: Vec<PointUpdate>) -> Vec<Event>`**.
+- Trait `GeoEngine`: zone registration + **`process_event(&mut self, PointUpdate) -> Vec<Event>`**.
+- **`Engine`**: `process_batch` (sorted multi-update + global event order), **`with_rules`**, default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
 - Input update: `PointUpdate { id, x, y }` (no timestamp in the core type).
 - Concrete type: `Engine` backed by `spatial::NaiveSpatialIndex` and `HashMap<String, EntityState>`.
 
-**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog). Ordering within an ingest is deterministic (`sort_events_deterministic`).
+**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
 
 **Per-entity state** (`crates/state`): `EntityState` holds `position: Option<(f64, f64)>`, membership sets (`inside`, `inside_corridor`, `inside_radius` as `BTreeSet<String>`), and `catalog_region: Option<String>`.
 
@@ -225,23 +226,23 @@ Event → Engine → Rules → State transition → Output events
 
 The project currently:
 
-- **Batch-first API:** `ingest` takes `Vec<PointUpdate>`; CLI defaults to `batch_size` 1 (stream-like) but the engine API is still batch-shaped.
+- **API:** `process_event` is primary; **`process_batch`** for buffered NDJSON/HTTP batches. CLI defaults `batch_size` to 1 (one `process_batch` per update line).
 - **Zone kinds:** Geofences (enter/exit), corridors (corridor enter/exit), catalog regions (assignment / tie-break by smallest id), radius zones (approach/recede).
 - **Spatial:** `SpatialIndex` trait exists; `NaiveSpatialIndex` implements R-tree–accelerated polygon queries plus linear radius checks.
-- **No `SpatialRule` trait yet** — behaviour is composed via `state` transition functions and explicit steps in `Engine::ingest`.
-- **Adapters:** `crates/adapters/stdin-stdout`, `crates/adapters/http`, and `crates/cli` (including `http_main` for HTTP mode).
+- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → corridor → radius → catalog).
+- **Adapters:** stdin-stdout and HTTP call **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
 - **Protocol:** NDJSON v1 and v1.1 docs under `protocol/`.
 
-**Known gap:** Move toward a true **`process_event`-style** API and pluggable rule traits without breaking determinism or thin adapters.
+**Known gap:** Timestamps on `PointUpdate`, richer protocol/schema, optional non-`Engine` adapter generics if needed.
 
 ---
 
 ## Immediate goals (V1 direction)
 
-1. Event-first engine API: `process_event(&mut self, update: …) -> Vec<Event>` (or equivalent), with **`ingest` as a thin loop** over single updates if it remains.
-2. Rule abstraction via traits (e.g. `SpatialRule`) rather than an ever-growing imperative sequence in `ingest`.
-3. Explicit state transitions: no hidden mutations; predictable, testable behaviour (already largely true in `state`; preserve when refactoring).
-4. Keep batch as a wrapper only; batch must not define architecture.
+1. **Done (baseline):** `process_event` + `SpatialRule` pipeline + `Engine::process_batch` for multi-update ordering.
+2. Optional: timestamps, custom rule sets per deployment, adapter ergonomics.
+3. Explicit state transitions: keep `state` helpers pure where possible.
+4. Batch remains a thin wrapper (`process_batch`), not the core abstraction.
 
 ---
 
@@ -323,5 +324,6 @@ When making changes:
 - Keep engine behaviour deterministic and testable.
 - Move the codebase toward event-driven processing when touching relevant areas.
 - Avoid unnecessary complexity; if unsure, choose **simplicity + extensibility** over completeness.
-
+- At this stage backwards compatibility is not important. As long as tests pass.
+ 
 **Guiding principle:** Build the engine abstraction first, not the ecosystem.

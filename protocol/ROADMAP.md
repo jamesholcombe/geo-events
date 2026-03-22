@@ -2,7 +2,7 @@
 
 ## 1. What this system is
 
-**Geo-stream** is a **single-node, in-memory geospatial stream processor**. It accepts **batches of point location updates**, maintains **per-entity state** (last position and current geofence membership), and emits **Enter** / **Exit** events when point-in-polygon containment changes. The core is **batch-oriented** (`ingest(Vec<PointUpdate>)`) rather than a callback per point.
+**Geo-stream** is a **single-node, in-memory geospatial stream processor**. It accepts **point location updates** (one at a time via `process_event`, or batched via `Engine::process_batch`), maintains **per-entity state** (last position and current geofence membership), and emits **Enter** / **Exit** events when point-in-polygon containment changes.
 
 It is designed to run as a **standalone process** (CLI + NDJSON) or behind **thin adapters** (HTTP, future Kafka consumers, etc.) that perform only IO and serialization — **not** spatial logic.
 
@@ -17,7 +17,7 @@ It is designed to run as a **standalone process** (CLI + NDJSON) or behind **thi
 
 - **Performance:** Tight memory layout, predictable CPU use for hot paths (point-in-polygon over moderate fence counts).
 - **Memory control:** No GC pauses; suitable for latency-sensitive streaming adapters later.
-- **Concurrency potential:** The engine API is intentionally side-effect free on IO; internal parallelism (parallel batches, sharded state) can be added without changing the **semantics** of `ingest` if done carefully.
+- **Concurrency potential:** The engine API is intentionally side-effect free on IO; internal parallelism (parallel batches, sharded state) can be added without changing the **semantics** of `process_event` / `process_batch` if done carefully.
 - **Correctness:** Strong types for geometry and explicit error handling (`register_geofence` validation, closed rings).
 
 ## 4. Why language-agnostic design
@@ -52,7 +52,7 @@ This separation (engine library + adapters) keeps **business logic** in one plac
 
 ```text
 crates/
-  engine/     — GeoEngine, Engine, PointUpdate
+  engine/     — GeoEngine, Engine, PointUpdate, process_batch, SpatialRule
   spatial/    — Geofence, point-in-polygon, R-tree index (`NaiveSpatialIndex`), SpatialIndex
   state/      — EntityState, Event, membership diff + sort
   adapters/
