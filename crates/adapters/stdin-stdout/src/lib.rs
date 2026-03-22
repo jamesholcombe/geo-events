@@ -1,4 +1,4 @@
-//! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`engine::Engine`].
+//! Newline-delimited JSON over stdin/stdout; parses NDJSON input lines and drives [`engine::Engine`].
 
 use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
 use polygon_json::polygon_from_json_value;

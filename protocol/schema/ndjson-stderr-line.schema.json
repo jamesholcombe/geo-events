@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NDJSON stderr line (geo-stream)",
+  "description": "Error object written to stderr (one JSON object per line).",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": { "type": "string" }
+  },
+  "additionalProperties": true
+}

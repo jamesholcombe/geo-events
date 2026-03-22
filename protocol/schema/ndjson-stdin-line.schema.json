@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NDJSON stdin line (geo-stream)",
+  "description": "One JSON object per line. Matches stdin-stdout InputLine.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["type", "id", "location"],
+      "properties": {
+        "type": { "const": "update" },
+        "id": { "type": "string" },
+        "location": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "t": { "type": "integer", "minimum": 0 },
+        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["type", "id", "polygon"],
+      "properties": {
+        "type": { "const": "register_geofence" },
+        "id": { "type": "string" },
+        "polygon": {
+          "$ref": "geojson-polygon-geometry.schema.json#/$defs/PolygonGeometry"
+        },
+        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["type", "id", "polygon"],
+      "properties": {
+        "type": { "const": "register_corridor" },
+        "id": { "type": "string" },
+        "polygon": {
+          "$ref": "geojson-polygon-geometry.schema.json#/$defs/PolygonGeometry"
+        },
+        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["type", "id", "polygon"],
+      "properties": {
+        "type": { "const": "register_catalog_region" },
+        "id": { "type": "string" },
+        "polygon": {
+          "$ref": "geojson-polygon-geometry.schema.json#/$defs/PolygonGeometry"
+        },
+        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["type", "id", "center", "radius"],
+      "properties": {
+        "type": { "const": "register_radius" },
+        "id": { "type": "string" },
+        "center": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "radius": { "type": "number" },
+        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

@@ -32,5 +32,22 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate NDJSON example/fixture lines (JSON Schema)
+        run: |
+          set -euo pipefail
+          pip install --disable-pip-version-check -q 'check-jsonschema>=0.28'
+          SCHEMA=protocol/schema/ndjson-stdin-line.schema.json
+          for f in examples/sample-input.ndjson examples/sample-zones.ndjson crates/cli/tests/fixtures/*.ndjson; do
+            echo "Checking $f"
+            while IFS= read -r line || [ -n "${line:-}" ]; do
+              [ -z "$line" ] && continue
+              echo "$line" | python -m check_jsonschema --schemafile "$SCHEMA" -
+            done < "$f"
+          done
+
       - name: Build HTTP binary
         run: cargo build -p cli --features http --bin geo-stream-http

@@ -1,4 +1,4 @@
-//! Optional HTTP adapter (protocol v2 sketch): JSON batch updates, JSON events response.
+//! Optional HTTP adapter: JSON batch updates, JSON events response (`/v1/...` routes).
 
 #[cfg(feature = "server")]
 mod server_impl {
@@ -254,8 +254,8 @@ mod server_impl {
     #[openapi(
         info(
             title = "geo-stream HTTP API",
-            description = "Batch geospatial stream processing (v2). Matches engine semantics described in protocol/ndjson-v1.1.md.",
-            version = "2.0.0"
+            description = "Batch geospatial stream processing. Matches engine semantics described in protocol/ndjson.md.",
+            version = "1.0.0"
         ),
         paths(
             openapi_json_handler,
@@ -275,27 +275,27 @@ mod server_impl {
             RegisterRadiusBody,
             EventJson
         )),
-        tags((name = "v2", description = "Version 2 endpoints"))
+        tags((name = "v1", description = "Version 1 endpoints"))
     )]
-    struct V2ApiDoc;
+    struct V1ApiDoc;
 
     /// OpenAPI 3 document (JSON).
     #[utoipa::path(
         get,
         path = "/openapi.json",
-        tag = "v2",
+        tag = "v1",
         responses(
             (status = 200, description = "OpenAPI 3.0 document", content_type = "application/json")
         )
     )]
     async fn openapi_json_handler() -> Json<utoipa::openapi::OpenApi> {
-        Json(V2ApiDoc::openapi())
+        Json(V1ApiDoc::openapi())
     }
 
     #[utoipa::path(
         get,
         path = "/health",
-        tag = "v2",
+        tag = "v1",
         responses((status = 200, description = "Service is up", body = HealthResponse))
     )]
     async fn health_handler() -> Json<HealthResponse> {
@@ -306,8 +306,8 @@ mod server_impl {
 
     #[utoipa::path(
         post,
-        path = "/v2/register_geofence",
-        tag = "v2",
+        path = "/v1/register_geofence",
+        tag = "v1",
         request_body = RegisterPolygonBody,
         responses(
             (status = 204, description = "Registered"),
@@ -333,8 +333,8 @@ mod server_impl {
 
     #[utoipa::path(
         post,
-        path = "/v2/register_corridor",
-        tag = "v2",
+        path = "/v1/register_corridor",
+        tag = "v1",
         request_body = RegisterPolygonBody,
         responses(
             (status = 204, description = "Registered"),
@@ -360,8 +360,8 @@ mod server_impl {
 
     #[utoipa::path(
         post,
-        path = "/v2/register_catalog_region",
-        tag = "v2",
+        path = "/v1/register_catalog_region",
+        tag = "v1",
         request_body = RegisterPolygonBody,
         responses(
             (status = 204, description = "Registered"),
@@ -387,8 +387,8 @@ mod server_impl {
 
     #[utoipa::path(
         post,
-        path = "/v2/register_radius",
-        tag = "v2",
+        path = "/v1/register_radius",
+        tag = "v1",
         request_body = RegisterRadiusBody,
         responses(
             (status = 204, description = "Registered"),
@@ -415,8 +415,8 @@ mod server_impl {
 
     #[utoipa::path(
         post,
-        path = "/v2/ingest",
-        tag = "v2",
+        path = "/v1/ingest",
+        tag = "v1",
         request_body = IngestBody,
         responses(
             (status = 200, description = "Emitted events for this batch", body = [EventJson]),
@@ -457,14 +457,14 @@ mod server_impl {
         Router::new()
             .route("/openapi.json", get(openapi_json_handler))
             .route("/health", get(health_handler))
-            .route("/v2/register_geofence", post(register_geofence_handler))
-            .route("/v2/register_corridor", post(register_corridor_handler))
+            .route("/v1/register_geofence", post(register_geofence_handler))
+            .route("/v1/register_corridor", post(register_corridor_handler))
             .route(
-                "/v2/register_catalog_region",
+                "/v1/register_catalog_region",
                 post(register_catalog_handler),
             )
-            .route("/v2/register_radius", post(register_radius_handler))
-            .route("/v2/ingest", post(ingest_handler))
+            .route("/v1/register_radius", post(register_radius_handler))
+            .route("/v1/ingest", post(ingest_handler))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(engine))
     }
@@ -529,7 +529,7 @@ mod server_impl {
             let doc: serde_json::Value = serde_json::from_slice(&body).unwrap();
             let paths = doc["paths"].as_object().expect("paths");
             assert!(paths.contains_key("/health"));
-            assert!(paths.contains_key("/v2/ingest"));
+            assert!(paths.contains_key("/v1/ingest"));
             assert!(paths.contains_key("/openapi.json"));
         }
 
@@ -541,7 +541,7 @@ mod server_impl {
                 .oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri("/v2/register_radius")
+                        .uri("/v1/register_radius")
                         .header("content-type", "application/json")
                         .body(Body::from(bad))
                         .unwrap(),
@@ -564,7 +564,7 @@ mod server_impl {
                 .oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri("/v2/register_geofence")
+                        .uri("/v1/register_geofence")
                         .header("content-type", "application/json")
                         .body(Body::from(poly))
                         .unwrap(),
@@ -577,7 +577,7 @@ mod server_impl {
                 .oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri("/v2/register_radius")
+                        .uri("/v1/register_radius")
                         .header("content-type", "application/json")
                         .body(Body::from(r#"{"id":"dup","cx":0,"cy":0,"r":1}"#.as_bytes()))
                         .unwrap(),
@@ -597,7 +597,7 @@ mod server_impl {
                 .oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri("/v2/ingest")
+                        .uri("/v1/ingest")
                         .header("content-type", "application/json")
                         .body(Body::from("{not json"))
                         .unwrap(),

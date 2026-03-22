@@ -16,7 +16,7 @@ cargo build
 cargo test
 ```
 
-`cargo test -p cli` also runs NDJSON integration tests (v1 smoke + v1.1 fixtures under `crates/cli/tests/fixtures/`).
+`cargo test -p cli` also runs NDJSON integration tests (fixtures under `crates/cli/tests/fixtures/`).
 
 **Benchmarks** (Criterion, engine `process_batch`): `cargo bench -p engine` or `make bench`. Results and HTML plots land under `target/criterion/` when you run the full bench (omit `--no-run`).
 
@@ -53,7 +53,7 @@ You should see two lines similar to:
 
   `{"type":"update","id":"c1","location":[x,y]}`
 
-Full contract: [protocol/ndjson-v1.md](protocol/ndjson-v1.md). Corridors, catalog assignment, and radius zones: [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md).
+Full contract: [protocol/ndjson.md](protocol/ndjson.md). Example with corridors, catalog regions, and radius: [`examples/sample-zones.ndjson`](examples/sample-zones.ndjson).
 
 ### Batching
 
@@ -82,7 +82,7 @@ cargo build -p cli --features http --bin geo-stream-http
 - **Errors:** failed requests return JSON `{"error":{"code":"<stable code>","message":"..."}}` (for example `invalid_json`, `invalid_input`, `conflict`, `internal_error`) with an appropriate HTTP status.
 - **`RUST_LOG`:** set e.g. `RUST_LOG=info` for HTTP request tracing (requires `tracing-subscriber` init in the binary).
 
-Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor`, `POST /v2/register_catalog_region`, `POST /v2/register_radius`, `POST /v2/ingest` with body `{"updates":[...]}` (see [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md) and `crates/adapters/http`).
+HTTP routes: `POST /v1/register_geofence`, `POST /v1/register_corridor`, `POST /v1/register_catalog_region`, `POST /v1/register_radius`, `POST /v1/ingest` with body `{"updates":[...]}` (see [protocol/ndjson.md](protocol/ndjson.md#http-adapter-optional) and `crates/adapters/http`).
 
 ## Project layout
 

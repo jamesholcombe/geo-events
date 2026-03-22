@@ -37,7 +37,7 @@ crates/polygon-json/       # supporting crate (JSON polygons)
 crates/adapters/http/      # HTTP adapter
 crates/adapters/stdin-stdout/
 crates/cli/                # CLI entrypoint
-protocol/                  # NDJSON contract: ndjson-v1.md, ndjson-v1.1.md, ROADMAP.md
+protocol/                  # NDJSON contract: ndjson.md, ROADMAP.md, schema/
 ```
 
 **Testing expectations:** Engine and `state` unit tests; CLI integration tests with NDJSON fixtures under `crates/cli/tests/fixtures/` and examples under `examples/`.
@@ -231,9 +231,9 @@ The project currently:
 - **Spatial:** `SpatialIndex` trait exists; `NaiveSpatialIndex` implements R-tree–accelerated polygon queries plus linear radius checks.
 - **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → corridor → radius → catalog).
 - **Adapters:** stdin-stdout and HTTP call **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
-- **Protocol:** NDJSON v1 and v1.1 docs under `protocol/`.
+- **Protocol:** NDJSON wire contract under `protocol/ndjson.md` (pre-release).
 
-**Known gap:** Richer protocol/schema (e.g. JSON Schema), optional non-`Engine` adapter generics if needed.
+**Known gap:** Optional non-`Engine` adapter generics if needed. JSON Schema for NDJSON and HTTP wire shapes lives under `protocol/schema/` (see `protocol/schema/README.md`).
 
 ---
 
