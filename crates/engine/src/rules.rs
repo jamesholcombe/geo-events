@@ -1,6 +1,6 @@
 //! Composable spatial rules: each rule reads the spatial index and updates entity state + events.
 
-use spatial::NaiveSpatialIndex;
+use spatial::SpatialIndex;
 use state::{
     assignment_transition, corridor_membership_transitions, geofence_membership_with_dwell,
     radius_membership_transitions, EntityState, Event, GeofenceDwell,
@@ -19,7 +19,7 @@ pub struct RuleContext<'a> {
 pub trait SpatialRule: Send + Sync {
     fn apply(
         &self,
-        spatial: &NaiveSpatialIndex,
+        spatial: &dyn SpatialIndex,
         ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
@@ -34,7 +34,7 @@ pub struct GeofenceRule;
 impl SpatialRule for GeofenceRule {
     fn apply(
         &self,
-        spatial: &NaiveSpatialIndex,
+        spatial: &dyn SpatialIndex,
         ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
@@ -62,7 +62,7 @@ pub struct CorridorRule;
 impl SpatialRule for CorridorRule {
     fn apply(
         &self,
-        spatial: &NaiveSpatialIndex,
+        spatial: &dyn SpatialIndex,
         ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
@@ -87,7 +87,7 @@ pub struct RadiusRule;
 impl SpatialRule for RadiusRule {
     fn apply(
         &self,
-        spatial: &NaiveSpatialIndex,
+        spatial: &dyn SpatialIndex,
         ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
@@ -112,7 +112,7 @@ pub struct CatalogRule;
 impl SpatialRule for CatalogRule {
     fn apply(
         &self,
-        spatial: &NaiveSpatialIndex,
+        spatial: &dyn SpatialIndex,
         ctx: &RuleContext<'_>,
         state: &mut EntityState,
         _scratch: &mut BTreeSet<String>,

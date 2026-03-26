@@ -45,6 +45,10 @@ pub enum SpatialError {
 /// Spatial containment queries over registered geofences.
 pub trait SpatialIndex {
     fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence>;
+    fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
+    fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
+    fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
+    fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String>;
 }
 
 /// R-tree index on polygon bounding boxes with exact `contains` refinement; radius zones linear scan.
@@ -263,18 +267,22 @@ impl NaiveSpatialIndex {
             .collect()
     }
 
-    /// Clears `out` and inserts ids of geofences whose polygon contains `point`.
-    pub fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+}
+
+impl SpatialIndex for NaiveSpatialIndex {
+    fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
+        containing_polygons(&self.fences, &self.fence_tree, point)
+    }
+
+    fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         fill_polygon_zone_ids(&self.fences, &self.fence_tree, point, out);
     }
 
-    /// Clears `out` and inserts ids of corridors whose polygon contains `point`.
-    pub fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+    fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         fill_polygon_zone_ids(&self.corridors, &self.corridor_tree, point, out);
     }
 
-    /// Clears `out` and inserts ids of radius zones containing `point`.
-    pub fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+    fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         out.clear();
         for z in &self.radius_zones {
             if z.contains_point(point.0, point.1) {
@@ -283,15 +291,8 @@ impl NaiveSpatialIndex {
         }
     }
 
-    /// Lexicographically smallest catalog region id among polygons containing `point`, if any.
-    pub fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String> {
+    fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String> {
         primary_catalog_at_indexed(&self.catalog, &self.catalog_tree, point)
-    }
-}
-
-impl SpatialIndex for NaiveSpatialIndex {
-    fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.fences, &self.fence_tree, point)
     }
 }
 

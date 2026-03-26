@@ -12,7 +12,7 @@ pub use rules::{
     default_rules, CatalogRule, CorridorRule, GeofenceRule, RadiusRule, RuleContext, SpatialRule,
 };
 
-pub use spatial::{Geofence, RadiusZone, SpatialError};
+pub use spatial::{Geofence, RadiusZone, SpatialError, SpatialIndex};
 pub use state::{EntityState, Event, GeofenceDwell};
 
 /// Single location observation for an entity.
@@ -160,7 +160,7 @@ impl GeoEngine for Engine {
             geofence_dwell,
         };
         for rule in rules.iter() {
-            rule.apply(spatial, &ctx, st, membership_scratch, &mut events);
+            rule.apply(spatial as &dyn SpatialIndex, &ctx, st, membership_scratch, &mut events);
         }
         st.position = Some(p);
         st.last_t_ms = Some(t_ms);
