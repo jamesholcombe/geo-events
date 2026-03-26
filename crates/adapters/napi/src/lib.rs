@@ -1,4 +1,4 @@
-use engine::{Engine, GeoEngine as GeoEngineTrait, GeofenceDwell, Geofence, PointUpdate, RadiusZone};
+use engine::{Engine, GeoEngine as _, Geofence, GeofenceDwell, PointUpdate, RadiusZone};
 use napi_derive::napi;
 use polygon_json::polygon_from_json_value;
 use serde::Serialize;
@@ -98,6 +98,12 @@ pub struct GeoEngineNode {
     inner: Engine,
 }
 
+impl Default for GeoEngineNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[napi]
 impl GeoEngineNode {
     #[napi(constructor)]
@@ -116,7 +122,8 @@ impl GeoEngineNode {
         polygon: serde_json::Value,
         dwell: Option<DwellOptionsJs>,
     ) -> napi::Result<()> {
-        let poly = polygon_from_json_value(&polygon).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        let poly = polygon_from_json_value(&polygon)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         let geofence = Geofence { id, polygon: poly };
         let dwell_config = dwell.map(|d| GeofenceDwell {
             min_inside_ms: d.min_inside_ms.map(|v| v as u64),
@@ -138,7 +145,8 @@ impl GeoEngineNode {
         id: String,
         polygon: serde_json::Value,
     ) -> napi::Result<()> {
-        let poly = polygon_from_json_value(&polygon).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        let poly = polygon_from_json_value(&polygon)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         let corridor = Geofence { id, polygon: poly };
         self.inner.register_corridor(corridor).map_err(engine_err)
     }
@@ -150,7 +158,8 @@ impl GeoEngineNode {
         id: String,
         polygon: serde_json::Value,
     ) -> napi::Result<()> {
-        let poly = polygon_from_json_value(&polygon).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        let poly = polygon_from_json_value(&polygon)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         let region = Geofence { id, polygon: poly };
         self.inner
             .register_catalog_region(region)
@@ -173,10 +182,7 @@ impl GeoEngineNode {
     /// Process a batch of point updates and return the resulting events.
     /// Updates are sorted by entity ID then timestamp before processing.
     #[napi]
-    pub fn ingest(
-        &mut self,
-        updates: Vec<PointUpdateJs>,
-    ) -> napi::Result<Vec<serde_json::Value>> {
+    pub fn ingest(&mut self, updates: Vec<PointUpdateJs>) -> napi::Result<Vec<serde_json::Value>> {
         let engine_updates: Vec<PointUpdate> = updates
             .into_iter()
             .map(|u| PointUpdate {
