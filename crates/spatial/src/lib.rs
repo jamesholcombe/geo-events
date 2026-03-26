@@ -288,13 +288,10 @@ impl NaiveSpatialIndex {
         let probe = point_probe_envelope(point);
         self.radius_tree
             .locate_in_envelope_intersecting(&probe)
-            .filter(|obj| {
-                self.radius_zones[obj.index].contains_point(point.0, point.1)
-            })
+            .filter(|obj| self.radius_zones[obj.index].contains_point(point.0, point.1))
             .map(|obj| &self.radius_zones[obj.index])
             .collect()
     }
-
 }
 
 impl SpatialIndex for NaiveSpatialIndex {

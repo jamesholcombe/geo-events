@@ -118,10 +118,7 @@ impl Engine {
     ///
     /// Monotonicity violations are **skipped and collected**: processing continues for valid
     /// updates. Returns `(events, errors)` where `errors` contains one entry per violated update.
-    pub fn process_batch(
-        &mut self,
-        mut batch: Vec<PointUpdate>,
-    ) -> (Vec<Event>, Vec<EngineError>) {
+    pub fn process_batch(&mut self, mut batch: Vec<PointUpdate>) -> (Vec<Event>, Vec<EngineError>) {
         batch.sort_by(|a, b| a.id.cmp(&b.id).then_with(|| a.t_ms.cmp(&b.t_ms)));
         let mut events = Vec::new();
         let mut errors = Vec::new();
@@ -193,7 +190,13 @@ impl GeoEngine for Engine {
             geofence_dwell,
         };
         for rule in rules.iter() {
-            rule.apply(spatial as &dyn SpatialIndex, &ctx, st, membership_scratch, &mut events);
+            rule.apply(
+                spatial as &dyn SpatialIndex,
+                &ctx,
+                st,
+                membership_scratch,
+                &mut events,
+            );
         }
         st.position = Some(p);
         st.last_t_ms = Some(t_ms);

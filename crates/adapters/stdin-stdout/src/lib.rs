@@ -114,52 +114,30 @@ enum NdjsonEvent {
 impl From<engine::Event> for NdjsonEvent {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter {
-                id,
-                geofence,
-                t_ms,
-            } => NdjsonEvent::Enter {
+            engine::Event::Enter { id, geofence, t_ms } => NdjsonEvent::Enter {
                 id,
                 geofence,
                 t: t_ms,
             },
-            engine::Event::Exit {
-                id,
-                geofence,
-                t_ms,
-            } => NdjsonEvent::Exit {
+            engine::Event::Exit { id, geofence, t_ms } => NdjsonEvent::Exit {
                 id,
                 geofence,
                 t: t_ms,
             },
-            engine::Event::EnterCorridor {
-                id,
-                corridor,
-                t_ms,
-            } => NdjsonEvent::EnterCorridor {
+            engine::Event::EnterCorridor { id, corridor, t_ms } => NdjsonEvent::EnterCorridor {
                 id,
                 corridor,
                 t: t_ms,
             },
-            engine::Event::ExitCorridor {
-                id,
-                corridor,
-                t_ms,
-            } => NdjsonEvent::ExitCorridor {
+            engine::Event::ExitCorridor { id, corridor, t_ms } => NdjsonEvent::ExitCorridor {
                 id,
                 corridor,
                 t: t_ms,
             },
-            engine::Event::Approach { id, zone, t_ms } => NdjsonEvent::Approach {
-                id,
-                zone,
-                t: t_ms,
-            },
-            engine::Event::Recede { id, zone, t_ms } => NdjsonEvent::Recede {
-                id,
-                zone,
-                t: t_ms,
-            },
+            engine::Event::Approach { id, zone, t_ms } => {
+                NdjsonEvent::Approach { id, zone, t: t_ms }
+            }
+            engine::Event::Recede { id, zone, t_ms } => NdjsonEvent::Recede { id, zone, t: t_ms },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
                 NdjsonEvent::AssignmentChanged {
                     id,
@@ -256,10 +234,7 @@ where
                 }
             }
             InputLine::Update {
-                id,
-                location,
-                t_ms,
-                ..
+                id, location, t_ms, ..
             } => {
                 pending.push(PointUpdate {
                     id,

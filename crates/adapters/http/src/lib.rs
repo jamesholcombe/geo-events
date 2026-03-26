@@ -196,52 +196,30 @@ mod server_impl {
     impl From<engine::Event> for EventJson {
         fn from(ev: engine::Event) -> Self {
             match ev {
-                engine::Event::Enter {
-                    id,
-                    geofence,
-                    t_ms,
-                } => EventJson::Enter {
+                engine::Event::Enter { id, geofence, t_ms } => EventJson::Enter {
                     id,
                     geofence,
                     t: t_ms,
                 },
-                engine::Event::Exit {
-                    id,
-                    geofence,
-                    t_ms,
-                } => EventJson::Exit {
+                engine::Event::Exit { id, geofence, t_ms } => EventJson::Exit {
                     id,
                     geofence,
                     t: t_ms,
                 },
-                engine::Event::EnterCorridor {
-                    id,
-                    corridor,
-                    t_ms,
-                } => EventJson::EnterCorridor {
+                engine::Event::EnterCorridor { id, corridor, t_ms } => EventJson::EnterCorridor {
                     id,
                     corridor,
                     t: t_ms,
                 },
-                engine::Event::ExitCorridor {
-                    id,
-                    corridor,
-                    t_ms,
-                } => EventJson::ExitCorridor {
+                engine::Event::ExitCorridor { id, corridor, t_ms } => EventJson::ExitCorridor {
                     id,
                     corridor,
                     t: t_ms,
                 },
-                engine::Event::Approach { id, zone, t_ms } => EventJson::Approach {
-                    id,
-                    zone,
-                    t: t_ms,
-                },
-                engine::Event::Recede { id, zone, t_ms } => EventJson::Recede {
-                    id,
-                    zone,
-                    t: t_ms,
-                },
+                engine::Event::Approach { id, zone, t_ms } => {
+                    EventJson::Approach { id, zone, t: t_ms }
+                }
+                engine::Event::Recede { id, zone, t_ms } => EventJson::Recede { id, zone, t: t_ms },
                 engine::Event::AssignmentChanged { id, region, t_ms } => {
                     EventJson::AssignmentChanged {
                         id,
