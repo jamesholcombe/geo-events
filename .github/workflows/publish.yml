@@ -89,15 +89,16 @@ jobs:
         with:
           path: crates/adapters/napi/artifacts
 
-      # napi artifacts moves each *.node into npm/<platform>/ ready for publishing
-      - name: Organise artifacts
-        run: npx napi artifacts --build-output-dir artifacts
-        working-directory: crates/adapters/napi
-
       # Generates npm/<platform>/package.json stubs and injects optionalDependencies
       # into the root package.json so consumers get the right binary on install.
+      # Must run before `napi artifacts` so the npm/<platform>/ directories exist.
       - name: Prepare platform packages (napi prepublish)
         run: npx napi prepublish -t npm
+        working-directory: crates/adapters/napi
+
+      # napi artifacts moves each *.node into the npm/<platform>/ directories created above.
+      - name: Organise artifacts
+        run: npx napi artifacts --build-output-dir artifacts
         working-directory: crates/adapters/napi
 
       # Compile types.ts → types.js + types.d.ts (also run by prepublishOnly hook)
