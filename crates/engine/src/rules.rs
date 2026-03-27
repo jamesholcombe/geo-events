@@ -2,8 +2,8 @@
 
 use spatial::SpatialIndex;
 use state::{
-    assignment_transition, corridor_membership_transitions, geofence_membership_with_dwell,
-    radius_membership_transitions, EntityState, Event, GeofenceDwell,
+    assignment_transition, corridor_membership_with_dwell, geofence_membership_with_dwell,
+    radius_membership_transitions, CorridorDwell, EntityState, Event, GeofenceDwell,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -13,6 +13,7 @@ pub struct RuleContext<'a> {
     pub position: (f64, f64),
     pub at_ms: u64,
     pub geofence_dwell: &'a HashMap<String, GeofenceDwell>,
+    pub corridor_dwell: &'a HashMap<String, CorridorDwell>,
 }
 
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
@@ -55,7 +56,7 @@ impl SpatialRule for GeofenceRule {
     }
 }
 
-/// Corridor enter/exit (separate polygon layer).
+/// Corridor enter/exit (separate polygon layer) with optional dwell / exit-debounce.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct CorridorRule;
 
@@ -70,13 +71,16 @@ impl SpatialRule for CorridorRule {
     ) {
         scratch.clear();
         spatial.corridor_membership_at(ctx.position, scratch);
-        out.extend(corridor_membership_transitions(
+        corridor_membership_with_dwell(
             ctx.entity_id,
-            &state.inside_corridor,
-            scratch,
             ctx.at_ms,
-        ));
-        std::mem::swap(&mut state.inside_corridor, scratch);
+            scratch,
+            &mut state.inside_corridor,
+            &mut state.corridor_enter_pending,
+            &mut state.corridor_exit_pending,
+            ctx.corridor_dwell,
+            out,
+        );
     }
 }
 
