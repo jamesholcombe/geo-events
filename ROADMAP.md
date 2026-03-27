@@ -109,9 +109,9 @@ These define what a stable, reliable v1 looks like.
 - [x] Implement R-tree spatial index for radius zones
 - [x] Handle polygon holes correctly in point-in-polygon
 - [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
-- [ ] Add dwell / debounce support for corridors
-- [ ] Resolve zone ID scoping (global vs per-type); update protocol if changed
-- [ ] Merge `polygon-json` into `crates/spatial`
+- [x] Add dwell / debounce support for corridors
+- [x] Resolve zone ID scoping (global vs per-type); update protocol if changed
+- [x] Merge `polygon-json` into `crates/spatial`
 - [ ] Add missing tests (cross-type duplicate IDs, timestamp edge cases)
 - [ ] Stabilise the NDJSON wire protocol to v1 (no breaking changes after this)
 
