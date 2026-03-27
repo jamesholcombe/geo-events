@@ -1,0 +1,123 @@
+name: Publish to npm
+
+# Trigger on version tags (e.g. v0.2.0) or manually via the Actions UI.
+# Before pushing a tag, bump the version in both:
+#   - crates/adapters/napi/package.json
+#   - crates/adapters/napi/Cargo.toml
+# Then: git tag v<version> && git push origin v<version>
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Build one .node binary per platform ─────────────────────────────────
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14           # Apple Silicon, native
+          - target: x86_64-apple-darwin
+            runner: macos-13           # Intel, native
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm   # GitHub's native arm64 runner
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install JS deps
+        run: npm ci
+        working-directory: crates/adapters/napi
+
+      - name: Build native module
+        run: npm run build -- --target ${{ matrix.target }}
+        working-directory: crates/adapters/napi
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: crates/adapters/napi/*.node
+          if-no-files-found: error
+
+  # ── 2. Collect all binaries and publish ────────────────────────────────────
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install JS deps
+        run: npm ci
+        working-directory: crates/adapters/napi
+
+      # Download all per-platform artifacts into crates/adapters/napi/artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          path: crates/adapters/napi/artifacts
+
+      # napi artifacts moves each *.node into npm/<platform>/ ready for publishing
+      - name: Organise artifacts
+        run: npx napi artifacts --dir artifacts
+        working-directory: crates/adapters/napi
+
+      # Generates npm/<platform>/package.json stubs and injects optionalDependencies
+      # into the root package.json so consumers get the right binary on install.
+      - name: Prepare platform packages (napi prepublish)
+        run: npx napi prepublish -t npm
+        working-directory: crates/adapters/napi
+
+      # Compile types.ts → types.js + types.d.ts (also run by prepublishOnly hook)
+      - name: Compile TypeScript
+        run: npx tsc
+        working-directory: crates/adapters/napi
+
+      # Publish each platform stub package first (e.g. geo-events-darwin-arm64)
+      - name: Publish platform packages
+        run: |
+          for dir in npm/*/; do
+            npm publish "$dir" --access public
+          done
+        working-directory: crates/adapters/napi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Publish the root package last (depends on platform packages being live)
+      - name: Publish root package
+        run: npm publish --access public
+        working-directory: crates/adapters/napi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
