@@ -13,7 +13,7 @@ pub use rules::{
 };
 
 pub use spatial::{Geofence, RadiusZone, SpatialError, SpatialIndex};
-pub use state::{EntityState, Event, GeofenceDwell};
+pub use state::{CorridorDwell, EntityState, Event, GeofenceDwell};
 
 /// Single location observation for an entity.
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +57,8 @@ pub struct Engine {
     spatial: NaiveSpatialIndex,
     /// Per geofence id: minimum inside/outside dwell before enter/exit events.
     geofence_dwell: HashMap<String, GeofenceDwell>,
+    /// Per corridor id: minimum inside/outside dwell before enter/exit corridor events.
+    corridor_dwell: HashMap<String, CorridorDwell>,
     entities: HashMap<String, EntityState>,
     /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
@@ -68,6 +70,7 @@ impl fmt::Debug for Engine {
         f.debug_struct("Engine")
             .field("spatial", &self.spatial)
             .field("geofence_dwell", &self.geofence_dwell.len())
+            .field("corridor_dwell", &self.corridor_dwell.len())
             .field("entities", &self.entities)
             .field("rules", &self.rules.len())
             .finish()
@@ -79,6 +82,7 @@ impl Default for Engine {
         Self {
             spatial: NaiveSpatialIndex::default(),
             geofence_dwell: HashMap::new(),
+            corridor_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
@@ -95,6 +99,7 @@ impl Engine {
         Self {
             spatial: NaiveSpatialIndex::default(),
             geofence_dwell: HashMap::new(),
+            corridor_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules,
@@ -110,6 +115,18 @@ impl Engine {
         let id = geofence.id.clone();
         self.spatial.try_push(geofence)?;
         self.geofence_dwell.insert(id, dwell);
+        Ok(())
+    }
+
+    /// Register a corridor with dwell / exit-debounce parameters (see [`CorridorDwell`]).
+    pub fn register_corridor_with_dwell(
+        &mut self,
+        corridor: Geofence,
+        dwell: CorridorDwell,
+    ) -> Result<(), EngineError> {
+        let id = corridor.id.clone();
+        self.spatial.try_push_corridor(corridor)?;
+        self.corridor_dwell.insert(id, dwell);
         Ok(())
     }
 
@@ -142,7 +159,9 @@ impl GeoEngine for Engine {
     }
 
     fn register_corridor(&mut self, corridor: Geofence) -> Result<(), EngineError> {
+        let id = corridor.id.clone();
         self.spatial.try_push_corridor(corridor)?;
+        self.corridor_dwell.insert(id, CorridorDwell::default());
         Ok(())
     }
 
@@ -165,6 +184,7 @@ impl GeoEngine for Engine {
         let Engine {
             spatial,
             geofence_dwell,
+            corridor_dwell,
             entities,
             membership_scratch,
             rules,
@@ -188,6 +208,7 @@ impl GeoEngine for Engine {
             position: p,
             at_ms: t_ms,
             geofence_dwell,
+            corridor_dwell,
         };
         for rule in rules.iter() {
             rule.apply(
@@ -526,6 +547,96 @@ mod tests {
         assert!(matches!(
             &ev[0],
             Event::Exit { id, geofence, t_ms: 30, .. } if id == "c1" && geofence == "zone-1"
+        ));
+    }
+
+    // --- Corridor dwell tests ---
+
+    #[test]
+    fn corridor_min_inside_ms_delays_enter_until_engine() {
+        let mut e = Engine::new();
+        e.register_corridor_with_dwell(
+            Geofence {
+                id: "cor-1".into(),
+                polygon: unit_square(),
+            },
+            CorridorDwell {
+                min_inside_ms: Some(50),
+                min_outside_ms: None,
+            },
+        )
+        .unwrap();
+
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 0.5,
+                y: 0.5,
+                t_ms: 0,
+            })
+            .unwrap()
+            .is_empty());
+
+        let ev = e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 0.5,
+                y: 0.5,
+                t_ms: 50,
+            })
+            .unwrap();
+        assert_eq!(ev.len(), 1);
+        assert!(matches!(
+            &ev[0],
+            Event::EnterCorridor { id, corridor, t_ms: 50, .. } if id == "c1" && corridor == "cor-1"
+        ));
+    }
+
+    #[test]
+    fn corridor_min_outside_ms_debounces_exit() {
+        let mut e = Engine::new();
+        e.register_corridor_with_dwell(
+            Geofence {
+                id: "cor-1".into(),
+                polygon: unit_square(),
+            },
+            CorridorDwell {
+                min_inside_ms: None,
+                min_outside_ms: Some(30),
+            },
+        )
+        .unwrap();
+
+        e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 0.5,
+            y: 0.5,
+            t_ms: 0,
+        })
+        .unwrap();
+
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 10.0,
+                t_ms: 0,
+            })
+            .unwrap()
+            .is_empty());
+
+        let ev = e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 10.0,
+                t_ms: 30,
+            })
+            .unwrap();
+        assert_eq!(ev.len(), 1);
+        assert!(matches!(
+            &ev[0],
+            Event::ExitCorridor { id, corridor, t_ms: 30, .. } if id == "c1" && corridor == "cor-1"
         ));
     }
 
