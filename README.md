@@ -1,40 +1,74 @@
-# geo-events
+<div align="center">
 
-An in-memory **geospatial stream processor**: feed it location updates, get back structured spatial events — `enter` / `exit` geofences, `approach` / `recede` radius zones, `assignment_changed` catalog regions, and more.
+# geo-stream
 
-First-class **TypeScript / Node.js** bindings via native NAPI. Also ships as a Rust library, an NDJSON CLI, and an optional HTTP adapter.
+**In-memory geospatial stream processor — location updates in, spatial events out.**
+
+[![npm version](https://img.shields.io/npm/v/geo-stream?style=flat-square&color=cb3837)](https://www.npmjs.com/package/geo-stream)
+[![CI](https://img.shields.io/github/actions/workflow/status/jamesholcombe/geo-stream/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/jamesholcombe/geo-stream/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square)](https://nodejs.org)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square)](#platform-support)
+
+</div>
 
 ---
 
-## TypeScript / Node.js
+Feed `geo-stream` a stream of `{ id, x, y, t_ms }` location updates and it emits structured spatial events — enter/exit geofences, approach/recede radius zones, corridor traversal, and catalog region assignment changes. The engine is a zero-copy Rust core exposed as a native Node.js module via NAPI, with no runtime dependencies.
 
-### Requirements
+```
+location update → ┌──────────────────┐ → enter / exit
+                  │   geo-stream      │ → approach / recede
+location update → │   engine          │ → enter_corridor / exit_corridor
+                  │   (Rust + NAPI)   │ → assignment_changed
+location update → └──────────────────┘
+```
 
-- Node.js 18+
-- The pre-built native module for your platform, or build from source (see [Building the native module](#building-the-native-module))
+## Features
 
-### Install
+- **Four zone types** — polygon geofences, corridors, radius zones, and catalog regions
+- **Dwell / debounce** — configurable `minInsideMs` / `minOutsideMs` thresholds per geofence
+- **Polygon holes** — GeoJSON polygons with interior rings are supported natively
+- **Typed events** — discriminated union `GeoEvent` with full TypeScript inference
+- **Native performance** — Rust R-tree spatial index; no JS overhead on the hot path
+- **Embeddable** — use as a Node.js package, a Rust crate, an NDJSON CLI, or over HTTP
 
-> The npm package is not yet published. To use from source, build the native module and link it:
->
-> ```bash
-> make napi-build
-> ```
+---
 
-### Quick start
+## Installation
+
+```bash
+npm install geo-stream
+```
+
+Pre-built native binaries are distributed for all supported platforms — no Rust toolchain required.
+
+### Platform support
+
+| Platform | Architecture | Status |
+|----------|-------------|--------|
+| macOS | arm64 (Apple Silicon) | ✅ |
+| macOS | x64 (Intel) | ✅ |
+| Linux (glibc) | x64 | ✅ |
+| Linux (glibc) | arm64 | ✅ |
+| Windows | x64 | ✅ |
+
+---
+
+## Quick start
 
 ```typescript
-import { GeoEngine } from './crates/adapters/napi/types'
+import { GeoEngine } from 'geo-stream'
 
 const engine = new GeoEngine()
 
-// Register a geofence (GeoJSON polygon)
+// Register a polygon geofence (GeoJSON)
 engine.registerGeofence('city-centre', {
   type: 'Polygon',
   coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
 })
 
-// Ingest a location update
+// Ingest location updates
 const events = engine.ingest([
   { id: 'vehicle-1', x: 0.5, y: 0.5, tMs: Date.now() },
 ])
@@ -43,78 +77,109 @@ console.log(events)
 // [{ kind: 'enter', id: 'vehicle-1', geofence: 'city-centre', t_ms: 1700000000000 }]
 ```
 
-### API
+---
 
-#### `new GeoEngine()`
+## API
 
-Creates a new, empty engine instance. Each instance tracks its own set of zones and entity states.
+### `new GeoEngine()`
+
+Creates a new, empty engine instance. Each instance tracks its own set of zones and entity states independently.
+
+---
+
+### Zone registration
 
 #### `registerGeofence(id, polygon, dwell?)`
 
-Register a named geofence from a GeoJSON `Polygon` object. Optionally provide dwell thresholds to debounce enter/exit events when an entity hovers near a boundary.
+Register a named geofence from a GeoJSON `Polygon` object. Fires `enter` / `exit` events.
 
 ```typescript
+// Basic
+engine.registerGeofence('warehouse', polygon)
+
+// With dwell thresholds (debounce boundary hover)
 engine.registerGeofence('warehouse', polygon, {
-  minInsideMs: 5_000,   // must be inside for ≥ 5 s before 'enter' fires
-  minOutsideMs: 3_000,  // must be outside for ≥ 3 s before 'exit' fires
+  minInsideMs: 5_000,   // must be inside ≥ 5 s before 'enter' fires
+  minOutsideMs: 3_000,  // must be outside ≥ 3 s before 'exit' fires
 })
 ```
 
 #### `registerCorridor(id, polygon)`
 
-Register a named corridor. Emits `enter_corridor` / `exit_corridor` as entities pass through.
+Register a named corridor from a GeoJSON `Polygon`. Fires `enter_corridor` / `exit_corridor` as entities pass through.
 
 #### `registerCatalogRegion(id, polygon)`
 
-Register a catalog region. Emits `assignment_changed` whenever an entity's containing region changes, including when it leaves all regions (`region: null`).
+Register a catalog region. Fires `assignment_changed` whenever an entity's current containing region changes, including when it leaves all regions (`region: null`).
 
 #### `registerRadiusZone(id, cx, cy, radius)`
 
-Register a circular zone defined by a centre point and radius (same coordinate units as your location data).
+Register a circular zone by centre point and radius (in the same coordinate units as your location data). Fires `approach` / `recede`.
 
-#### `ingest(updates)`
+```typescript
+engine.registerRadiusZone('depot', 51.5074, -0.1278, 0.05)
+```
 
-Process a batch of point updates. Returns all spatial events fired by the batch as a typed `GeoEvent[]`.
+---
+
+### `ingest(updates)`
+
+Process a batch of location updates. Returns all spatial events produced by the batch as a typed `GeoEvent[]`.
 
 ```typescript
 const events = engine.ingest([
-  { id: 'vehicle-1', x: 0.5, y: 0.5, tMs: 1_700_000_000_000 },
-  { id: 'vehicle-2', x: 5.0, y: 5.0, tMs: 1_700_000_000_000 },
+  { id: 'vehicle-1', x: 0.50, y: 0.50, tMs: 1_700_000_000_000 },
+  { id: 'vehicle-2', x: 5.00, y: 5.00, tMs: 1_700_000_000_000 },
 ])
 ```
 
-### Event types
+Updates within a batch are sorted by `(id, tMs)` before processing, so order within a batch does not matter.
 
-All events are a discriminated union on `kind`:
+---
+
+## Event types
+
+All events are a discriminated union on `kind`. Switch exhaustively for compile-time completeness guarantees:
 
 ```typescript
-type GeoEvent =
-  | { kind: 'enter';              id: string; geofence: string;      t_ms: number }
-  | { kind: 'exit';               id: string; geofence: string;      t_ms: number }
-  | { kind: 'enter_corridor';     id: string; corridor: string;      t_ms: number }
-  | { kind: 'exit_corridor';      id: string; corridor: string;      t_ms: number }
-  | { kind: 'approach';           id: string; zone: string;          t_ms: number }
-  | { kind: 'recede';             id: string; zone: string;          t_ms: number }
-  | { kind: 'assignment_changed'; id: string; region: string | null; t_ms: number }
+import type { GeoEvent } from 'geo-stream'
+
+function handle(event: GeoEvent) {
+  switch (event.kind) {
+    case 'enter':              // event.geofence, event.id, event.t_ms
+    case 'exit':               // event.geofence, event.id, event.t_ms
+    case 'enter_corridor':     // event.corridor, event.id, event.t_ms
+    case 'exit_corridor':      // event.corridor, event.id, event.t_ms
+    case 'approach':           // event.zone,     event.id, event.t_ms
+    case 'recede':             // event.zone,     event.id, event.t_ms
+    case 'assignment_changed': // event.region (string | null), event.id, event.t_ms
+  }
+}
 ```
 
-Switch exhaustively on `kind` to handle each event type.
+| `kind` | Trigger | Key field |
+|--------|---------|-----------|
+| `enter` | Entity enters a geofence | `geofence` |
+| `exit` | Entity exits a geofence | `geofence` |
+| `enter_corridor` | Entity enters a corridor | `corridor` |
+| `exit_corridor` | Entity exits a corridor | `corridor` |
+| `approach` | Entity enters a radius zone | `zone` |
+| `recede` | Entity exits a radius zone | `zone` |
+| `assignment_changed` | Entity's catalog region changes | `region` (`null` = unassigned) |
 
-### Examples
+---
+
+## Examples
 
 Working examples are in [`examples/typescript/`](examples/typescript/):
 
 | File | What it shows |
 |------|---------------|
-| [`01-basic-geofence.ts`](examples/typescript/01-basic-geofence.ts) | Register a polygon, ingest points, observe enter/exit events |
-| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All four zone types — geofence, corridor, catalog, radius — in one script |
+| [`01-basic-geofence.ts`](examples/typescript/01-basic-geofence.ts) | Register a polygon, ingest points, observe enter/exit |
+| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All four zone types in one script |
 | [`03-dwell.ts`](examples/typescript/03-dwell.ts) | Dwell thresholds to debounce boundary hover |
 
-Run the examples after building the native module:
-
 ```bash
-make napi-build
-
 cd examples/typescript
 npm install
 npx ts-node 01-basic-geofence.ts
@@ -122,65 +187,69 @@ npx ts-node 01-basic-geofence.ts
 
 ---
 
-## CLI
+## Other interfaces
 
-The `geo-stream` binary reads **newline-delimited JSON** from stdin and writes events to stdout (errors to stderr).
+<details>
+<summary><strong>CLI (NDJSON over stdin/stdout)</strong></summary>
+
+The `geo-stream` binary reads newline-delimited JSON from stdin and writes events to stdout.
 
 ```bash
 cargo run -p cli --bin geo-stream -- < examples/sample-input.ndjson
 ```
-
-Expected output:
 
 ```json
 {"event":"enter","id":"c1","geofence":"zone-1","t":1700000000000}
 {"event":"exit","id":"c1","geofence":"zone-1","t":1700000060000}
 ```
 
-**Input shapes (quick reference):**
+**Input shapes:**
 
-- Register a geofence: `{"type":"register_geofence","id":"zone-1","polygon":{...GeoJSON Polygon...}}`
-- Point update: `{"type":"update","id":"c1","location":[x,y],"t":1700000000000}`
+```jsonc
+// Register a geofence
+{"type":"register_geofence","id":"zone-1","polygon":{...GeoJSON Polygon...}}
 
-Full protocol spec: [protocol/ndjson.md](protocol/ndjson.md). A sample with all zone types: [`examples/sample-zones.ndjson`](examples/sample-zones.ndjson).
+// Point update
+{"type":"update","id":"c1","location":[x,y],"t":1700000000000}
+```
 
 **Batching:**
 
 ```bash
+# Buffer all stdin, then one process_batch call
 cargo run -p cli --bin geo-stream -- --batch-size 0 < examples/sample-input.ndjson
 ```
 
-- `--batch-size 1` (default): one `update` line → one engine batch.
-- `--batch-size N` (`N > 1`): buffer `N` updates, then `process_batch`.
-- `--batch-size 0`: buffer all until EOF, then one `process_batch`.
+Full protocol spec: [`protocol/ndjson.md`](protocol/ndjson.md).
 
-Zone registrations are always applied immediately.
+</details>
 
----
-
-## HTTP adapter
-
-Build the Axum-based HTTP server (same engine, JSON over HTTP):
+<details>
+<summary><strong>HTTP adapter (Axum)</strong></summary>
 
 ```bash
 cargo build -p cli --features http --bin geo-stream-http
 ./target/debug/geo-stream-http --listen 0.0.0.0:8080
 ```
 
-- `GET /health` — `{"status":"ok"}`
-- `GET /openapi.json` — OpenAPI 3 spec for all routes
-- `POST /v1/register_geofence`, `POST /v1/register_corridor`, `POST /v1/register_catalog_region`, `POST /v1/register_radius`
-- `POST /v1/ingest` — body: `{"updates":[...]}`
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | `{"status":"ok"}` |
+| `GET` | `/openapi.json` | OpenAPI 3 spec |
+| `POST` | `/v1/register_geofence` | Register a polygon geofence |
+| `POST` | `/v1/register_corridor` | Register a corridor |
+| `POST` | `/v1/register_catalog_region` | Register a catalog region |
+| `POST` | `/v1/register_radius` | Register a radius zone |
+| `POST` | `/v1/ingest` | `{"updates":[...]}` → events |
 
-Errors return `{"error":{"code":"<stable_code>","message":"..."}}` with an appropriate HTTP status.
+Errors: `{"error":{"code":"<stable_code>","message":"..."}}` with appropriate HTTP status.
 
-Set `RUST_LOG=info` for HTTP request tracing.
+Set `RUST_LOG=info` for request tracing.
 
----
+</details>
 
-## Rust
-
-The engine is a Cargo workspace of focused crates. Embed it directly:
+<details>
+<summary><strong>Rust crate</strong></summary>
 
 ```rust
 use engine::{Engine, GeoEngine};
@@ -197,24 +266,23 @@ let events = engine.process_event(PointUpdate {
 });
 ```
 
-Build and test:
-
 ```bash
 cargo build
 cargo test
 cargo bench -p engine    # Criterion benchmarks → target/criterion/
 ```
 
----
+</details>
 
-## Building the native module
+<details>
+<summary><strong>Docker</strong></summary>
 
 ```bash
-make napi-build           # debug build (fast iteration)
-make napi-build-release   # optimised release build
+docker build -f docker/Dockerfile -t geo-stream .
+docker run --rm -i geo-stream < examples/sample-input.ndjson
 ```
 
-Pre-built `.node` binaries are included for macOS arm64. Release builds for all supported platforms (macOS x64/arm64, Linux x64/arm64, Windows x64) are produced by CI.
+</details>
 
 ---
 
@@ -222,23 +290,31 @@ Pre-built `.node` binaries are included for macOS arm64. Release builds for all 
 
 | Path | Role |
 |------|------|
-| `crates/adapters/napi` | **TypeScript / Node.js NAPI bindings** |
-| `crates/engine` | `GeoEngine` trait, `Engine`, `process_event`, `SpatialRule` pipeline |
-| `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree (`NaiveSpatialIndex`) |
-| `crates/state` | `EntityState`, spatial event types |
+| `crates/adapters/napi` | TypeScript / Node.js NAPI bindings (`geo-stream` npm package) |
+| `crates/engine` | `GeoEngine` trait, `Engine`, `SpatialRule` pipeline |
+| `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree |
+| `crates/state` | `EntityState`, `Event` enum |
 | `crates/adapters/stdin-stdout` | NDJSON CLI adapter |
-| `crates/adapters/http` | Optional Axum HTTP adapter |
+| `crates/adapters/http` | Axum HTTP adapter (feature-gated) |
 | `crates/cli` | `geo-stream` / `geo-stream-http` binaries |
 | `protocol/` | NDJSON wire spec and JSON Schema |
 | `examples/` | Sample NDJSON, GeoJSON, and TypeScript scripts |
 
-Background, architectural decisions, and planned features: [ROADMAP.md](ROADMAP.md).
+Architecture, invariants, and roadmap: [ROADMAP.md](ROADMAP.md).
 
 ---
 
-## Docker
+## Building the native module from source
+
+Requires a Rust toolchain ([rustup.rs](https://rustup.rs)) and Node.js 18+.
 
 ```bash
-docker build -f docker/Dockerfile -t geo-stream .
-docker run --rm -i geo-stream < examples/sample-input.ndjson
+make napi-build           # debug (fast iteration)
+make napi-build-release   # optimised release
 ```
+
+---
+
+## License
+
+[MIT](LICENSE)

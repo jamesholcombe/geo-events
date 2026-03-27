@@ -91,7 +91,7 @@ jobs:
 
       # napi artifacts moves each *.node into npm/<platform>/ ready for publishing
       - name: Organise artifacts
-        run: npx napi artifacts --dir artifacts
+        run: npx napi artifacts --build-output-dir artifacts
         working-directory: crates/adapters/napi
 
       # Generates npm/<platform>/package.json stubs and injects optionalDependencies
