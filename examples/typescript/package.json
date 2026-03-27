@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "description": "TypeScript examples for geo-events — run with ts-node",
+  "devDependencies": {
+    "@types/node": "^20",
+    "ts-node": "^10",
+    "typescript": "^5"
+  }
+}
