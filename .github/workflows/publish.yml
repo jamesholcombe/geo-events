@@ -89,16 +89,22 @@ jobs:
         with:
           path: crates/adapters/napi/artifacts
 
-      # Generates npm/<platform>/package.json stubs and injects optionalDependencies
-      # into the root package.json so consumers get the right binary on install.
-      # Must run before `napi artifacts` so the npm/<platform>/ directories exist.
-      - name: Prepare platform packages (napi prepublish)
-        run: npx napi prepublish -t npm
+      # Pre-create every platform directory so that `napi artifacts` (which writes
+      # all five platforms concurrently via Promise.all) never races to create the
+      # shared `npm/` parent at the same time as a sibling directory.
+      - name: Create npm platform directories
+        run: mkdir -p npm/darwin-arm64 npm/darwin-x64 npm/linux-x64-gnu npm/linux-arm64-gnu npm/win32-x64-msvc
         working-directory: crates/adapters/napi
 
-      # napi artifacts moves each *.node into the npm/<platform>/ directories created above.
+      # napi artifacts copies each *.node into npm/<platform>/
       - name: Organise artifacts
         run: npx napi artifacts --build-output-dir artifacts
+        working-directory: crates/adapters/napi
+
+      # Generates npm/<platform>/package.json stubs and injects optionalDependencies
+      # into the root package.json so consumers get the right binary on install.
+      - name: Prepare platform packages (napi prepublish)
+        run: npx napi prepublish -t npm
         working-directory: crates/adapters/napi
 
       # Compile types.ts → types.js + types.d.ts (also run by prepublishOnly hook)
