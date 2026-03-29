@@ -93,14 +93,14 @@ jobs:
       # The npm/ platform directories and their package.json files are committed;
       # only the *.node binaries are gitignored and populated here at publish time.
       - name: Organise artifacts
-        run: npx napi artifacts --build-output-dir artifacts
+        run: npx napi artifacts --build-output-dir artifacts 
         working-directory: crates/adapters/napi
 
       # napi pre-publish: updates version in each npm/<platform>/package.json,
       # injects optionalDependencies into the root package.json, and publishes
       # each platform package to npm.
       - name: Pre-publish (platform packages)
-        run: npx napi pre-publish -t npm --no-gh-release
+        run: npx napi pre-publish -t npm --no-gh-release --access=public
         working-directory: crates/adapters/napi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
