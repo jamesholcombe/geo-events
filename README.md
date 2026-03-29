@@ -18,15 +18,15 @@ Feed `geo-stream` a stream of `{ id, x, y, t_ms }` location updates and it emits
 
 ```
 location update → ┌──────────────────┐ → enter / exit
-                  │   geo-stream      │ → approach / recede
-location update → │   engine          │ → enter_corridor / exit_corridor
-                  │   (Rust + NAPI)   │ → assignment_changed
+                  │   geo-stream     │ → approach / recede
+location update → │   engine         │ → assignment_changed
+                  │   (Rust + NAPI)  │ 
 location update → └──────────────────┘
 ```
 
 ## Features
 
-- **Four zone types** — polygon geofences, corridors, radius zones, and catalog regions
+- **Four zone types** — polygon geofences,  radius zones, and catalog regions
 - **Dwell / debounce** — configurable `minInsideMs` / `minOutsideMs` thresholds per geofence
 - **Polygon holes** — GeoJSON polygons with interior rings are supported natively
 - **Typed events** — discriminated union `GeoEvent` with full TypeScript inference
