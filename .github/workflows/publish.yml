@@ -100,7 +100,7 @@ jobs:
       # injects optionalDependencies into the root package.json, and publishes
       # each platform package to npm.
       - name: Pre-publish (platform packages)
-        run: npx napi pre-publish -t npm --no-gh-release --access=public
+        run: npx napi pre-publish -t npm --no-gh-release 
         working-directory: crates/adapters/napi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
