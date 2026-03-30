@@ -5,7 +5,6 @@
 
 CLI_PKG   := cli
 CLI_BIN   := geo-stream
-NAPI_DIR  := crates/adapters/napi
 SAMPLE    := examples/sample-input.ndjson
 IMAGE     := geo-stream
 
@@ -73,19 +72,19 @@ run-batch: ## Run CLI with --batch-size 0 on sample input
 
 .PHONY: napi-install
 napi-install: ## Install npm dependencies for the NAPI adapter
-	cd $(NAPI_DIR) && npm install
+	cd geo-stream && npm install
 
 .PHONY: napi-build
 napi-build: napi-install ## Build the NAPI native module (debug)
-	cd $(NAPI_DIR) && npm run build:debug
+	cd geo-stream && npm run build:debug
 
 .PHONY: napi-build-release
 napi-build-release: napi-install ## Build the NAPI native module (release)
-	cd $(NAPI_DIR) && npm run build
+	cd geo-stream && npm run build
 
 .PHONY: napi-typecheck
 napi-typecheck: ## Type-check types.ts against the generated index.d.ts
-	cd $(NAPI_DIR) && npm run typecheck
+	cd geo-stream && npm run typecheck
 
 .PHONY: install-hooks
 install-hooks: ## Install git pre-commit hook (auto-formats with cargo fmt)

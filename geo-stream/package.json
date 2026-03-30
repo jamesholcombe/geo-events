@@ -17,8 +17,8 @@
     "types.d.ts"
   ],
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release --manifest-path ../crates/adapters/napi/Cargo.toml",
+    "build:debug": "napi build --platform --manifest-path ../crates/adapters/napi/Cargo.toml",
     "compile": "tsc",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run compile"

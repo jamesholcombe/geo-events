@@ -43,7 +43,7 @@ cargo set-version "$NEW_VERSION"
 # Sync package.json
 node -e "
   const fs = require('fs');
-  const path = 'crates/adapters/napi/package.json';
+  const path = 'geo-stream/package.json';
   const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
   pkg.version = '$NEW_VERSION';
   fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
@@ -54,7 +54,7 @@ echo "Bumped $CURRENT → $NEW_VERSION"
 git add version.txt Cargo.toml Cargo.lock \
         crates/engine/Cargo.toml crates/state/Cargo.toml \
         crates/spatial/Cargo.toml crates/adapters/stdin-stdout/Cargo.toml \
-        crates/adapters/napi/Cargo.toml crates/adapters/napi/package.json \
+        crates/adapters/napi/Cargo.toml geo-stream/package.json \
         crates/cli/Cargo.toml
 git commit -m "chore: bump version to v$NEW_VERSION"
 git tag "v$NEW_VERSION"

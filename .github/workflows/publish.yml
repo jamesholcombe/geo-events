@@ -55,17 +55,17 @@ jobs:
 
       - name: Install JS deps
         run: npm ci
-        working-directory: crates/adapters/napi
+        working-directory: geo-stream
 
       - name: Build native module
         run: npm run build -- --target ${{ matrix.target }}
-        working-directory: crates/adapters/napi
+        working-directory: geo-stream
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
-          path: crates/adapters/napi/*.node
+          path: geo-stream/*.node
           if-no-files-found: error
 
   # ── 2. Collect all binaries, publish to npm, and create GitHub release ─────
@@ -86,26 +86,26 @@ jobs:
 
       - name: Install JS deps
         run: npm ci
-        working-directory: crates/adapters/napi
+        working-directory: geo-stream
 
-      # Download all per-platform artifacts into crates/adapters/napi/artifacts/
+      # Download all per-platform artifacts into geo-stream/artifacts/
       - uses: actions/download-artifact@v4
         with:
-          path: crates/adapters/napi/artifacts
+          path: geo-stream/artifacts
 
       # napi artifacts copies each *.node into the committed npm/<platform>/ stubs.
       # The npm/ platform directories and their package.json files are committed;
       # only the *.node binaries are gitignored and populated here at publish time.
       - name: Organise artifacts
-        run: npx napi artifacts --build-output-dir artifacts 
-        working-directory: crates/adapters/napi
+        run: npx napi artifacts --build-output-dir artifacts
+        working-directory: geo-stream
 
       # napi pre-publish: updates version in each npm/<platform>/package.json,
       # injects optionalDependencies into the root package.json, and publishes
       # each platform package to npm.
       - name: Pre-publish (platform packages)
-        run: npx napi pre-publish -t npm --no-gh-release 
-        working-directory: crates/adapters/napi
+        run: npx napi pre-publish -t npm --no-gh-release
+        working-directory: geo-stream
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,12 +113,12 @@ jobs:
       # Compile types.ts → types.js + types.d.ts
       - name: Compile TypeScript
         run: npx tsc
-        working-directory: crates/adapters/napi
+        working-directory: geo-stream
 
       # Publish the root package last (depends on platform packages being live)
       - name: Publish root package
         run: npm publish --access public
-        working-directory: crates/adapters/napi
+        working-directory: geo-stream
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
