@@ -4,45 +4,52 @@ This document is the canonical reference for past, present, and future developme
 
 ---
 
-## What is done (v0.0.1 baseline)
+## What is done
 
 ### Core engine
 
-- `GeoEngine` trait: zone registration + `process_event(PointUpdate) -> Vec<Event>`
-- `Engine::process_batch`: sort by `(id, t_ms)` → process each → `sort_events_deterministic`
-- `SpatialRule` trait: composable, ordered pipeline of spatial checks per update
+- `GeoEngine` trait: zone registration + `process_event(PointUpdate) -> Result<Vec<Event>, EngineError>`
+- Monotonicity enforcement: `process_event` returns `EngineError::MonotonicityViolation` for strictly backwards timestamps per entity
+- `Engine::process_batch`: sort by `(id, t_ms)` → process each → `sort_events_deterministic`; returns `(Vec<Event>, Vec<EngineError>)` — monotonicity violations are skipped, not fatal
+- `SpatialRule` trait: composable, ordered pipeline of spatial checks per update; takes `&dyn SpatialIndex` (not the concrete type)
 - Default pipeline: `ZoneRule → RadiusRule → CatalogRule`
 - `Engine::with_rules`: custom rule sets per deployment
-- `zone_dwell`: per-zone `min_inside_ms` / `min_outside_ms` with pending-map cancellation on bounce-back
+- `ZoneDwell`: per-zone `min_inside_ms` / `min_outside_ms` with pending-map cancellation on bounce-back
 
 ### Zone types
 
 | Zone | Events emitted | Index |
 |------|---------------|-------|
-| Zone (polygon) | `Enter` / `Exit` | R-tree (bounding box) + exact point-in-polygon |
+| Zone (polygon, with holes) | `Enter` / `Exit` | R-tree (bounding box) + exact point-in-polygon |
 | Catalog region (polygon layer) | `AssignmentChanged` (lex-smallest containing region) | R-tree |
-| Circle (disk) | `Approach` / `Recede` | R-tree |
+| Circle (disk) | `Approach` / `Recede` | R-tree (inflated AABB) |
 
 ### State
 
-- Per-entity `EntityState`: position, last timestamp, zone membership (`inside`), radius membership, catalog assignment
+- Per-entity `EntityState`: position, last timestamp, zone membership (`inside`), circle membership, catalog assignment
 - Dwell pending maps (`zone_enter_pending`, `zone_exit_pending`) cancel on bounce-back before threshold elapses
 - `sort_events_deterministic`: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
+
+### Spatial abstraction
+
+- `SpatialIndex` trait exposes `zone_membership_at`, `circle_membership_at`, `primary_catalog_at` — fully decoupled from `NaiveSpatialIndex`
+- Custom rules and alternate index implementations are now possible without modifying engine code
 
 ### Adapters
 
 - **stdin-stdout**: NDJSON line-by-line, batching strategies (`--batch-size N`)
+- **NAPI (Node.js)**: native Rust bindings via NAPI; `GeoEngine` class with `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`
 - **Protocol**: NDJSON wire contract at `protocol/ndjson.md`, JSON Schema under `protocol/schema/`
 
 ### Crate structure
 
 ```
-crates/engine/          — GeoEngine, Engine, SpatialRule pipeline
-crates/state/           — EntityState, Event enum, membership transitions
-crates/spatial/         — Zone, Circle, NaiveSpatialIndex (R-tree)
-crates/polygon-json/    — GeoJSON polygon parsing helper
+crates/engine/              — GeoEngine, Engine, SpatialRule pipeline
+crates/state/               — EntityState, Event enum, membership transitions
+crates/spatial/             — Zone, Circle, NaiveSpatialIndex (R-tree), GeoJSON polygon parsing
 crates/adapters/stdin-stdout/
-crates/cli/             — geo-stream binary
+crates/adapters/napi/       — Node.js NAPI bindings
+crates/cli/                 — geo-stream binary
 ```
 
 ### Tooling
@@ -58,41 +65,21 @@ crates/cli/             — geo-stream binary
 
 These are correctness or design gaps that should be resolved before v1.
 
-### High priority
-
-**1. `SpatialRule::apply` is coupled to `NaiveSpatialIndex`**
-The trait takes `&NaiveSpatialIndex` directly. Custom rules and alternate index implementations are blocked until this is `&dyn SpatialIndex` (or a generic bound). This is the most important abstraction gap.
-
-**2. Polygon holes are silently ignored**
-Point-in-polygon only tests the exterior ring. A point inside a hole of a registered zone will incorrectly report as inside. This is a silent correctness bug for any zone that has an exclusion zone.
-
-**3. Out-of-order timestamps are undefined behavior**
-`process_event` accepts any `t_ms`. No check prevents an update with a past timestamp from being processed against state that was built from future timestamps. The dwell timer logic in particular can produce incorrect events if timestamps go backwards. Document the contract explicitly and/or enforce monotonicity per entity.
-
-**4. Circles have no spatial index**
-`radius_membership_at` is a linear scan over `Vec<Circle>`. This is O(n) per update per entity. At thousands of zones this will dominate the hot path. Circles are just inflated point AABBs and should get R-tree treatment identical to polygons.
-
 ### Medium priority
 
-**5. Zone ID uniqueness is global across all types**
-A zone and a circle or catalog region cannot share the same ID. Either: (a) document this strongly and enforce at the API surface with a clear error, or (b) make IDs scoped per zone type and update the wire protocol accordingly.
+**1. Dwell / debounce is zone-only**
+Circles have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near a circle boundary causes approach/recede flapping in the same way as near a polygon boundary.
 
-**6. Dwell / debounce is zone-only**
-Circles and catalog regions have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near zone boundaries causes flapping in the same way as near zone boundaries.
+**2. No test for global zone ID uniqueness across types**
+A zone, circle, and catalog region cannot share the same ID. The `DuplicateZoneId` error path is not exercised in any test.
 
-**7. `polygon-json` is a 30-line utility that does not need to be its own crate**
-It could live in `crates/spatial` since it is purely a geometry helper. Reduces workspace overhead.
+**3. No test for equal-timestamp updates**
+`process_event` allows equal timestamps (`t_ms == last_t_ms`) — this is intentional (same-timestamp batch items are valid). The behaviour is unspecified in the protocol and untested.
 
 ### Lower priority
 
-**8. No test for global zone ID uniqueness across types**
-The cross-type duplicate ID error is not exercised in any test.
-
-**9. No test for out-of-order or equal-timestamp updates**
-What happens when two updates for the same entity arrive with the same `t_ms`? The behavior is currently unspecified.
-
-**10. `membership_scratch` swap pattern is hard to follow**
-`RadiusRule` uses `std::mem::swap` to move new state into entity state and hand old state back to scratch. This is efficient but subtle. A comment explaining the invariant would prevent future regressions.
+**4. `membership_scratch` swap pattern is undocumented**
+`RadiusRule` uses `std::mem::swap` to transfer new state into `EntityState` and hand old state back to scratch. This is efficient but non-obvious. A comment on the invariant would prevent future regressions.
 
 ---
 
@@ -102,21 +89,22 @@ These define what a stable, reliable v1 looks like.
 
 ### v1.0 — Correctness and abstraction cleanup
 
-- [x] Fix `SpatialRule::apply` to use `SpatialIndex` trait (or generic bound) rather than `NaiveSpatialIndex`
-- [x] Implement R-tree spatial index for circles
-- [x] Handle polygon holes correctly in point-in-polygon
-- [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
-- [x] Resolve zone ID scoping (global vs per-type); update protocol if changed
-- [x] Merge `polygon-json` into `crates/spatial`
-- [ ] Add missing tests (cross-type duplicate IDs, timestamp edge cases)
+- [x] `SpatialRule::apply` uses `&dyn SpatialIndex`, not the concrete type
+- [x] R-tree spatial index for circles
+- [x] Polygon holes handled correctly in point-in-polygon
+- [x] Timestamp monotonicity enforced per entity (`EngineError::MonotonicityViolation`)
+- [x] Zone ID scoping resolved
+- [x] `polygon-json` merged into `crates/spatial`
+- [ ] Add missing tests: cross-type duplicate IDs, equal-timestamp updates
+- [ ] Dwell / debounce support for circles
 - [ ] Stabilise the NDJSON wire protocol to v1 (no breaking changes after this)
 
-### v1.1 — Observability and operability
+### v1.1 — Operability
 
-- [ ] Structured tracing throughout the engine (enter, exit, dwell pending state changes)
-- [ ] Per-entity and per-zone event counters (Prometheus-compatible or embeddable metrics)
-- [ ] Health endpoint reports registered zone counts and entity state size
 - [ ] Engine state snapshot + restore (serialize `EntityState` map to JSON/msgpack for process restart)
+- [ ] Structured tracing in the engine (enter, exit, dwell pending state changes)
+- [ ] Runtime zone deregistration (remove a zone by ID without restarting)
+- [ ] Zone update (replace a polygon for an existing ID without losing entity state)
 
 ---
 
@@ -124,21 +112,19 @@ These define what a stable, reliable v1 looks like.
 
 These make geo-stream useful beyond direct Rust embedding.
 
+### Client SDKs
+
+- [x] **TypeScript/Node.js SDK**: NAPI bindings (`crates/adapters/napi`); `GeoEngine` class; `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`; typed `GeoEvent` discriminated union; pre-built native binaries for macOS/Linux/Windows
+- [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
+
 ### Adapters
 
 - [ ] **Kafka consumer adapter**: consume location updates from a Kafka topic, emit events to another topic; offset commit after processing
 - [ ] **Redis Streams adapter**: XREAD input, XADD output; compatible with Redis cluster
-- [ ] **File ingestion adapter**: replay CSV / GeoJSON NDJSON history; useful for backtesting fence configurations
-
-### Client SDKs
-
-- [x] **TypeScript/Node.js SDK** (high priority): NAPI bindings; typed event types; async iterator interface
-- [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
+- [ ] **File ingestion adapter**: replay NDJSON or CSV history; useful for backtesting zone configurations
 
 ### Zone management
 
-- [ ] Runtime zone deregistration (remove a fence by ID without restarting the engine)
-- [ ] Zone update (replace a polygon for an existing ID without losing entity state)
 - [ ] Batch zone registration (load a GeoJSON FeatureCollection in one call)
 
 ---
