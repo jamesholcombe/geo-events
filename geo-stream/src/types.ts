@@ -8,11 +8,11 @@
  */
 
 import type { Polygon, MultiPolygon, Feature } from "geojson";
-import { GeoEngineNode } from "../index.js";
+import { GeoEngineNode } from "./index.js";
 import type {
   PointUpdateJs as PointUpdate,
   DwellOptionsJs as DwellOptions,
-} from "../index.js";
+} from "./index.js";
 
 export type { PointUpdate, DwellOptions };
 
