@@ -1,23 +1,415 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
 
-.heroBanner {
-  padding: 4rem 0;
-  text-align: center;
+.main {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Hero ────────────────────────────────────────────────────────────────── */
+
+.hero {
   position: relative;
+  padding: 7rem 1.5rem 6rem;
+  text-align: center;
   overflow: hidden;
+  background: #0a0e17;
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+/* Radial glow behind the heading */
+.heroGlow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 30%, rgba(37, 194, 160, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 70% 60%, rgba(56, 120, 255, 0.10) 0%, transparent 65%);
+  pointer-events: none;
 }
 
-.buttons {
+/* Subtle dot-grid texture */
+.heroGrid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+}
+
+.heroInner {
+  position: relative;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 1.5rem;
+  padding: 0.3rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 194, 160, 0.35);
+  background: rgba(37, 194, 160, 0.07);
+  color: #25c2a0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.heroTitle {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.2rem, 5.5vw, 3.4rem);
+  font-weight: 800;
+  line-height: 1.15;
+  color: #e8eaf0;
+  letter-spacing: -0.02em;
+}
+
+.heroTitleAccent {
+  background: linear-gradient(135deg, #25c2a0 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.heroSubtitle {
+  margin: 0 auto 2.5rem;
+  max-width: 580px;
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: #8b95a8;
+}
+
+.heroActions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1.6rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #25c2a0 0%, #1aa88a 100%);
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 0 0 0 rgba(37, 194, 160, 0);
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(37, 194, 160, 0.35);
+}
+
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1.6rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8cdd6 !important;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.btnSecondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+/* ─── Code preview ────────────────────────────────────────────────────────── */
+
+.codeSection {
+  padding: 0 1.5rem 4rem;
+  background: #0a0e17;
+}
+
+.codeCard {
+  max-width: 760px;
+  margin: 0 auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111620;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+
+.codeBar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  padding: 0.75rem 1.1rem;
+  background: #0d1119;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.codeDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+.codeBarLabel {
+  margin-left: 0.6rem;
+  font-size: 0.78rem;
+  color: #4a5568;
+  font-family: var(--ifm-font-family-monospace);
+}
+
+.codePre {
+  margin: 0;
+  padding: 1.4rem 0;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+
+.codeLine {
+  display: flex;
+  min-height: 1.65em;
+  padding: 0 1.4rem;
+}
+
+.codeLine:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lineNum {
+  flex-shrink: 0;
+  width: 2.2rem;
+  color: #2d3748;
+  font-family: var(--ifm-font-family-monospace);
+  user-select: none;
+  text-align: right;
+  margin-right: 1.2rem;
+}
+
+.lineContent {
+  flex: 1;
+  font-family: var(--ifm-font-family-monospace);
+  white-space: pre;
+}
+
+/* ─── Features ────────────────────────────────────────────────────────────── */
+
+.features {
+  padding: 5rem 1.5rem;
+  background: #0d1119;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.featuresInner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.featureCard {
+  padding: 1.8rem 1.6rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #111620;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.featureCard:hover {
+  border-color: rgba(37, 194, 160, 0.3);
+  transform: translateY(-2px);
+}
+
+.featureIcon {
+  display: block;
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  line-height: 1;
+}
+
+.featureTitle {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e0e4ec;
+}
+
+.featureBody {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: #7a8494;
+}
+
+/* ─── Install CTA ─────────────────────────────────────────────────────────── */
+
+.install {
+  padding: 6rem 1.5rem;
+  background: #0a0e17;
+  text-align: center;
+}
+
+.installInner {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.installLabel {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #25c2a0;
+}
+
+.installCmd {
+  display: inline-block;
+  margin-bottom: 1.1rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  background: #111620;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.installCmd code {
+  font-size: 0.95rem;
+  color: #a8b4c8;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+.installNote {
+  margin: 0 0 2rem;
+  font-size: 0.87rem;
+  color: #596070;
+}
+
+/* ─── Light mode overrides ────────────────────────────────────────────────── */
+
+[data-theme='light'] .hero,
+[data-theme='light'] .codeSection,
+[data-theme='light'] .install {
+  background: #f8fafc;
+}
+
+[data-theme='light'] .heroGrid {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.07) 1px, transparent 1px);
+}
+
+[data-theme='light'] .heroGlow {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 30%, rgba(37, 194, 160, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 70% 60%, rgba(56, 120, 255, 0.07) 0%, transparent 65%);
+}
+
+[data-theme='light'] .heroTitle {
+  color: #0f172a;
+}
+
+[data-theme='light'] .badge {
+  background: rgba(37, 194, 160, 0.1);
+  border-color: rgba(37, 194, 160, 0.4);
+}
+
+[data-theme='light'] .heroSubtitle {
+  color: #475569;
+}
+
+[data-theme='light'] .btnSecondary {
+  border-color: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.04);
+  color: #334155 !important;
+}
+
+[data-theme='light'] .btnSecondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='light'] .codeCard {
+  background: #1e2433;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme='light'] .codeBar {
+  background: #181f30;
+}
+
+[data-theme='light'] .features {
+  background: #f1f5f9;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='light'] .featureCard {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='light'] .featureCard:hover {
+  border-color: rgba(37, 194, 160, 0.4);
+}
+
+[data-theme='light'] .featureTitle {
+  color: #0f172a;
+}
+
+[data-theme='light'] .featureBody {
+  color: #475569;
+}
+
+[data-theme='light'] .installCmd {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .installCmd code {
+  color: #334155;
+}
+
+[data-theme='light'] .installNote {
+  color: #94a3b8;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .hero {
+    padding: 5rem 1.2rem 4rem;
+  }
+
+  .heroActions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .btnPrimary,
+  .btnSecondary {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+
+  .codeSection {
+    padding-bottom: 3rem;
+  }
+
+  .features {
+    padding: 3.5rem 1.2rem;
+  }
+
+  .install {
+    padding: 4rem 1.2rem;
+  }
 }
