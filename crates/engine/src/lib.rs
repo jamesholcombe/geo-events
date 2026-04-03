@@ -518,6 +518,64 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_zone_id_raises() {
+        let mut e = Engine::new();
+        let zone_a = Zone {
+            id: "a".into(),
+            polygon: unit_square(),
+        };
+
+        let zone_b: Zone = Zone {
+            id: "a".into(),
+            polygon: unit_square(),
+        };
+
+        e.register_zone(zone_a).unwrap();
+        let result = e.register_zone(zone_b);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(EngineError::Spatial(_))));
+    }
+
+    #[test]
+    fn duplicate_circle_id_raises() {
+        let mut e = Engine::new();
+        let circle_a = Circle {
+            id: "1".into(),
+            cx: 1.0,
+            cy: 1.0,
+            r: 1.0,
+        };
+        let circle_b = Circle {
+            id: "1".into(),
+            cx: 1.0,
+            cy: 1.0,
+            r: 1.0,
+        };
+
+        e.register_circle(circle_a).unwrap();
+        let result = e.register_circle(circle_b);
+        assert!(matches!(result, Err(EngineError::Spatial(_))))
+    }
+
+    #[test]
+    fn cross_type_duplicate_id_ok() {
+        let mut e = Engine::new();
+        let circle = Circle {
+            id: "1".into(),
+            cx: 1.0,
+            cy: 1.0,
+            r: 1.0,
+        };
+        let zone = Zone {
+            id: "1".into(),
+            polygon: unit_square(),
+        };
+
+        e.register_circle(circle).unwrap();
+        e.register_zone(zone).unwrap()
+    }
+
+    #[test]
     fn equal_timestamp_is_accepted() {
         let mut e = Engine::new();
         e.process_event(PointUpdate {

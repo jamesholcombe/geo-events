@@ -79,12 +79,6 @@ These are correctness or design gaps that should be resolved before v1.
 **1. Dwell / debounce is zone-only**
 Circles have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near a circle boundary causes approach/recede flapping in the same way as near a polygon boundary.
 
-**2. No test for global zone ID uniqueness across types**
-A zone, circle, and catalog region cannot share the same ID. The `DuplicateZoneId` error path is not exercised in any test.
-
-**3. No test for equal-timestamp updates**
-`process_event` allows equal timestamps (`t_ms == last_t_ms`) — this is intentional (same-timestamp batch items are valid). The behaviour is unspecified in the protocol and untested.
-
 ### Lower priority
 
 **4. `membership_scratch` swap pattern is undocumented**
@@ -104,7 +98,7 @@ These define what a stable, reliable v1 looks like.
 - [x] Timestamp monotonicity enforced per entity (`EngineError::MonotonicityViolation`)
 - [x] Zone ID scoping resolved
 - [x] `polygon-json` merged into `crates/spatial`
-- [ ] Add missing tests: cross-type duplicate IDs, equal-timestamp updates
+- [x] Add missing tests: cross-type duplicate IDs, equal-timestamp updates
 - [ ] Dwell / debounce support for circles
 - [ ] Stabilise the NDJSON wire protocol to v1 (no breaking changes after this)
 
