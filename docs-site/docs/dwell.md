@@ -2,14 +2,22 @@
 id: dwell
 title: Dwell Thresholds
 sidebar_position: 5
-description: Suppress spurious enter/exit events from GPS noise near zone boundaries.
+description: Suppress spurious enter/exit and approach/recede events from GPS noise near zone and circle boundaries.
 ---
 
-GPS receivers near zone boundaries produce noisy readings. A vehicle stopped at a warehouse loading bay can appear to cross the boundary multiple times in a few seconds, generating spurious `enter`/`exit` pairs. Without debouncing, each crossing triggers downstream workflows — notifications, billing events, dispatch assignments — incorrectly.
+GPS receivers near boundaries produce noisy readings. A vehicle stopped at a warehouse loading bay can appear to cross the boundary multiple times in a few seconds, generating spurious event pairs. Without debouncing, each crossing triggers downstream workflows — notifications, billing events, dispatch assignments — incorrectly.
 
-Dwell thresholds require an entity to remain inside or outside a zone for a minimum duration before an event fires.
+Dwell thresholds require an entity to remain inside or outside a geometry for a minimum duration before an event fires. Both polygon zones and circles support dwell.
 
-## ZoneOptions
+## How each threshold works
+
+**`minInsideMs`**: The entity must remain continuously inside for at least this many milliseconds before the entry event fires. If the entity exits before the threshold is reached, no event fires and the inside timer resets.
+
+**`minOutsideMs`**: Once inside, the entity must remain continuously outside for at least this many milliseconds before the exit event fires. If the entity re-enters before the threshold is reached, no event fires and the outside timer resets.
+
+Both fields default to `0`, which means instant transitions — the same behaviour as omitting the `dwell` option entirely.
+
+## ZoneOptions — polygon zones
 
 Pass dwell thresholds as the third argument to `registerZone`:
 
@@ -26,13 +34,22 @@ engine.registerZone(
 )
 ```
 
-Both fields default to `0`, which means instant transitions — the same behaviour as omitting the `dwell` option entirely.
+## CircleOptions — circles
 
-## How each threshold works
+Pass dwell thresholds as the fifth argument to `registerCircle`:
 
-**`minInsideMs`**: The entity must remain continuously inside the zone for at least this many milliseconds before `enter` fires. If the entity exits before the threshold is reached, no `enter` fires and the inside timer resets.
-
-**`minOutsideMs`**: Once inside, the entity must remain continuously outside the zone for at least this many milliseconds before `exit` fires. If the entity re-enters before the threshold is reached, no `exit` fires and the outside timer resets.
+```typescript
+engine.registerCircle(
+  'depot-beacon',
+  7, 7, 1.5,
+  {
+    dwell: {
+      minInsideMs: 4_000,   // entity must be continuously inside >= 4 s before 'approach' fires
+      minOutsideMs: 2_000,  // entity must stay outside >= 2 s before 'recede' fires
+    },
+  },
+)
+```
 
 ## Example
 
@@ -91,7 +108,3 @@ for (const ev of sustainedEvents) {
 | Vehicle GPS (5 Hz) | 5 000 – 10 000 | 3 000 – 5 000 |
 | Pedestrian GPS (1 Hz) | 2 000 – 5 000 | 1 000 – 3 000 |
 | No debouncing needed | 0 (default) | 0 (default) |
-
-:::info
-Dwell thresholds apply to polygon zones only. Circles (`registerCircle`) do not support dwell options — `approach` and `recede` always fire on the first update that crosses the boundary.
-:::

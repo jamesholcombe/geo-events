@@ -9,7 +9,7 @@ use thiserror::Error;
 
 pub use rules::{default_rules, CatalogRule, RadiusRule, RuleContext, SpatialRule, ZoneRule};
 pub use spatial::{Circle, SpatialError, SpatialIndex, Zone};
-pub use state::{EntityState, HistoryPoint, ZoneDwell};
+pub use state::{CircleDwell, EntityState, HistoryPoint, ZoneDwell};
 
 // ---------------------------------------------------------------------------
 // Public event type
@@ -346,8 +346,15 @@ pub struct PointUpdate {
 /// Engine API: zone registration and single-update processing.
 pub trait GeoEngine {
     fn register_zone(&mut self, zone: Zone) -> Result<(), EngineError>;
+    fn register_zone_with_dwell(&mut self, zone: Zone, dwell: ZoneDwell)
+        -> Result<(), EngineError>;
     fn register_catalog_region(&mut self, region: Zone) -> Result<(), EngineError>;
     fn register_circle(&mut self, circle: Circle) -> Result<(), EngineError>;
+    fn register_circle_with_dwell(
+        &mut self,
+        circle: Circle,
+        dwell: CircleDwell,
+    ) -> Result<(), EngineError>;
 
     /// Process one location update. Returns an error if the update's timestamp is strictly less
     /// than the last seen timestamp for the entity (monotonicity violation).
@@ -387,6 +394,8 @@ pub struct Engine {
     spatial: NaiveSpatialIndex,
     /// Per zone id: minimum inside/outside dwell before enter/exit events.
     zone_dwell: HashMap<String, ZoneDwell>,
+    /// Per circle id: minimum inside/outside dwell before approach/recede events.
+    circle_dwell: HashMap<String, CircleDwell>,
     entities: HashMap<String, EntityState>,
     /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
@@ -401,6 +410,7 @@ impl fmt::Debug for Engine {
         f.debug_struct("Engine")
             .field("spatial", &self.spatial)
             .field("zone_dwell", &self.zone_dwell.len())
+            .field("circle_dwell", &self.circle_dwell.len())
             .field("entities", &self.entities)
             .field("rules", &self.rules.len())
             .field("configurable_rules", &self.configurable_rules.len())
@@ -425,6 +435,7 @@ impl Engine {
         Self {
             spatial: NaiveSpatialIndex::default(),
             zone_dwell: HashMap::new(),
+            circle_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
@@ -438,6 +449,7 @@ impl Engine {
         Self {
             spatial: NaiveSpatialIndex::default(),
             zone_dwell: HashMap::new(),
+            circle_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules,
@@ -445,18 +457,6 @@ impl Engine {
             sequence_rules: Vec::new(),
             history_size: EngineOptions::default().history_size,
         }
-    }
-
-    /// Register a zone with dwell / exit-debounce parameters (see [`ZoneDwell`]).
-    pub fn register_zone_with_dwell(
-        &mut self,
-        zone: Zone,
-        dwell: ZoneDwell,
-    ) -> Result<(), EngineError> {
-        let id = zone.id.clone();
-        self.spatial.try_push_zone(zone)?;
-        self.zone_dwell.insert(id, dwell);
-        Ok(())
     }
 
     /// Add a configurable rule that fires `Custom` events when its triggers and filters match.
@@ -501,9 +501,17 @@ impl Engine {
 
 impl GeoEngine for Engine {
     fn register_zone(&mut self, zone: Zone) -> Result<(), EngineError> {
+        self.register_zone_with_dwell(zone, ZoneDwell::default())
+    }
+
+    fn register_zone_with_dwell(
+        &mut self,
+        zone: Zone,
+        dwell: ZoneDwell,
+    ) -> Result<(), EngineError> {
         let id = zone.id.clone();
         self.spatial.try_push_zone(zone)?;
-        self.zone_dwell.insert(id, ZoneDwell::default());
+        self.zone_dwell.insert(id, dwell);
         Ok(())
     }
 
@@ -513,7 +521,17 @@ impl GeoEngine for Engine {
     }
 
     fn register_circle(&mut self, circle: Circle) -> Result<(), EngineError> {
+        self.register_circle_with_dwell(circle, CircleDwell::default())
+    }
+
+    fn register_circle_with_dwell(
+        &mut self,
+        circle: Circle,
+        dwell: CircleDwell,
+    ) -> Result<(), EngineError> {
+        let id = circle.id.clone();
         self.spatial.try_push_circle(circle)?;
+        self.circle_dwell.insert(id, dwell);
         Ok(())
     }
 
@@ -525,6 +543,7 @@ impl GeoEngine for Engine {
         let Engine {
             spatial,
             zone_dwell,
+            circle_dwell,
             entities,
             membership_scratch,
             rules,
@@ -583,6 +602,7 @@ impl GeoEngine for Engine {
             position: p,
             at_ms: t_ms,
             zone_dwell,
+            circle_dwell,
         };
         let mut raw: Vec<state::Event> = Vec::new();
         for rule in rules.iter() {
@@ -890,6 +910,223 @@ mod tests {
         assert_eq!(ev.len(), 1);
         assert!(
             matches!(&ev[0], Event::Exit { id, zone, t_ms: 30, .. } if id == "c1" && zone == "zone-1")
+        );
+    }
+
+    #[test]
+    fn circle_min_inside_ms_delays_approach() {
+        let mut e = Engine::new();
+        e.register_circle_with_dwell(
+            Circle {
+                id: "rad-1".into(),
+                cx: 0.0,
+                cy: 0.0,
+                r: 2.0,
+            },
+            CircleDwell {
+                min_inside_ms: Some(50),
+                min_outside_ms: None,
+            },
+        )
+        .unwrap();
+
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 1.0,
+                y: 0.0,
+                t_ms: 0
+            })
+            .unwrap()
+            .is_empty());
+
+        let ev = e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 1.0,
+                y: 0.0,
+                t_ms: 50,
+            })
+            .unwrap();
+        assert_eq!(ev.len(), 1);
+        assert!(
+            matches!(&ev[0], Event::Approach { id, circle, t_ms: 50, .. } if id == "c1" && circle == "rad-1")
+        );
+    }
+
+    #[test]
+    fn circle_min_outside_ms_debounces_recede() {
+        let mut e = Engine::new();
+        e.register_circle_with_dwell(
+            Circle {
+                id: "rad-1".into(),
+                cx: 0.0,
+                cy: 0.0,
+                r: 2.0,
+            },
+            CircleDwell {
+                min_inside_ms: None,
+                min_outside_ms: Some(30),
+            },
+        )
+        .unwrap();
+
+        // Enter immediately (no min_inside_ms).
+        e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 1.0,
+            y: 0.0,
+            t_ms: 0,
+        })
+        .unwrap();
+
+        // Leave — exit pending starts.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 0
+            })
+            .unwrap()
+            .is_empty());
+
+        let ev = e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 30,
+            })
+            .unwrap();
+        assert_eq!(ev.len(), 1);
+        assert!(
+            matches!(&ev[0], Event::Recede { id, circle, t_ms: 30, .. } if id == "c1" && circle == "rad-1")
+        );
+    }
+
+    #[test]
+    fn circle_dwell_cancels_approach_on_bounce() {
+        let mut e = Engine::new();
+        e.register_circle_with_dwell(
+            Circle {
+                id: "rad-1".into(),
+                cx: 0.0,
+                cy: 0.0,
+                r: 2.0,
+            },
+            CircleDwell {
+                min_inside_ms: Some(100),
+                min_outside_ms: None,
+            },
+        )
+        .unwrap();
+
+        // Enter circle — pending starts.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 1.0,
+                y: 0.0,
+                t_ms: 0
+            })
+            .unwrap()
+            .is_empty());
+
+        // Bounce out before threshold — pending cancels.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 50
+            })
+            .unwrap()
+            .is_empty());
+
+        // Re-enter — no Approach yet (fresh pending timer).
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 1.0,
+                y: 0.0,
+                t_ms: 60
+            })
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn circle_dwell_cancels_recede_on_re_entry() {
+        let mut e = Engine::new();
+        e.register_circle_with_dwell(
+            Circle {
+                id: "rad-1".into(),
+                cx: 0.0,
+                cy: 0.0,
+                r: 2.0,
+            },
+            CircleDwell {
+                min_inside_ms: None,
+                min_outside_ms: Some(100),
+            },
+        )
+        .unwrap();
+
+        // Enter immediately (no min_inside_ms).
+        e.process_event(PointUpdate {
+            id: "c1".into(),
+            x: 1.0,
+            y: 0.0,
+            t_ms: 0,
+        })
+        .unwrap();
+
+        // Leave — exit_pending starts.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 50,
+            })
+            .unwrap()
+            .is_empty());
+
+        // Re-enter before min_outside_ms elapses — pending cancels, no Recede.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 1.0,
+                y: 0.0,
+                t_ms: 60,
+            })
+            .unwrap()
+            .is_empty());
+
+        // Leave again — exit_pending restarts.
+        assert!(e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 70,
+            })
+            .unwrap()
+            .is_empty());
+
+        // Threshold elapses — Recede fires.
+        let ev = e
+            .process_event(PointUpdate {
+                id: "c1".into(),
+                x: 10.0,
+                y: 0.0,
+                t_ms: 170,
+            })
+            .unwrap();
+        assert_eq!(ev.len(), 1);
+        assert!(
+            matches!(&ev[0], Event::Recede { id, circle, t_ms: 170, .. } if id == "c1" && circle == "rad-1")
         );
     }
 

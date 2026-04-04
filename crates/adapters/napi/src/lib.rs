@@ -1,6 +1,6 @@
 use engine::{
-    Circle, ConfigurableRule, Engine, EngineOptions, EventKind, GeoEngine as _, PointUpdate,
-    RuleFilter, RuleTrigger, SequenceRule, Zone, ZoneDwell,
+    Circle, CircleDwell, ConfigurableRule, Engine, EngineOptions, EventKind, GeoEngine as _,
+    PointUpdate, RuleFilter, RuleTrigger, SequenceRule, Zone, ZoneDwell,
 };
 use napi_derive::napi;
 use serde::Serialize;
@@ -356,10 +356,29 @@ impl GeoEngineNode {
     }
 
     /// Register a named circle by center point and radius (same units as coordinates).
+    /// Optionally provide dwell thresholds to debounce approach/recede events.
     #[napi]
-    pub fn register_circle(&mut self, id: String, cx: f64, cy: f64, r: f64) -> napi::Result<()> {
+    pub fn register_circle(
+        &mut self,
+        id: String,
+        cx: f64,
+        cy: f64,
+        r: f64,
+        dwell: Option<DwellOptionsJs>,
+    ) -> napi::Result<()> {
         let circle = Circle { id, cx, cy, r };
-        self.inner.register_circle(circle).map_err(engine_err)
+        match dwell {
+            Some(d) => {
+                let dwell_cfg = CircleDwell {
+                    min_inside_ms: d.min_inside_ms.map(|v| v as u64),
+                    min_outside_ms: d.min_outside_ms.map(|v| v as u64),
+                };
+                self.inner
+                    .register_circle_with_dwell(circle, dwell_cfg)
+                    .map_err(engine_err)
+            }
+            None => self.inner.register_circle(circle).map_err(engine_err),
+        }
     }
 
     /// Define a configurable rule. Fires a `rule` event when triggers and filters match.

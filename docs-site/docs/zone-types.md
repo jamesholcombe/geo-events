@@ -112,7 +112,7 @@ engine.ingest([{ id: 'truck-1', x: 50, y: 50, tMs: t0 + 60_000 }])
 ## Circles
 
 ```typescript
-engine.registerCircle(id: string, cx: number, cy: number, r: number): this
+engine.registerCircle(id: string, cx: number, cy: number, r: number, options?: CircleOptions): this
 ```
 
 Circles emit `approach` when an entity enters the radius, and `recede` when it exits.
@@ -136,4 +136,15 @@ engine.ingest([{ id: 'truck-1', x: 7.0, y: 7.0, tMs: t0 }])
 
 engine.ingest([{ id: 'truck-1', x: 20, y: 20, tMs: t0 + 30_000 }])
 // [{ kind: 'recede', id: 'truck-1', circle: 'depot-beacon', t_ms: ... }]
+```
+
+An optional `dwell` threshold in `CircleOptions` suppresses spurious boundary crossings, just like `ZoneOptions` for polygons. See [Dwell Thresholds](./dwell) for details.
+
+```typescript
+interface CircleOptions {
+  dwell?: {
+    minInsideMs?: number   // ms entity must be continuously inside before 'approach' fires
+    minOutsideMs?: number  // ms entity must be continuously outside before 'recede' fires
+  }
+}
 ```

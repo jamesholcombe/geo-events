@@ -1,5 +1,5 @@
 export { GeoEngine } from "./engine.js";
-export type { EngineOptions, ZoneOptions } from "./engine.js";
+export type { EngineOptions, ZoneOptions, CircleOptions } from "./engine.js";
 
 export type {
   GeoEvent,

@@ -2,8 +2,8 @@
 
 use spatial::SpatialIndex;
 use state::{
-    assignment_transition, circle_membership_transitions, zone_membership_with_dwell, EntityState,
-    Event, ZoneDwell,
+    assignment_transition, circle_membership_with_dwell, zone_membership_with_dwell, CircleDwell,
+    EntityState, Event, ZoneDwell,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -13,6 +13,7 @@ pub struct RuleContext<'a> {
     pub position: (f64, f64),
     pub at_ms: u64,
     pub zone_dwell: &'a HashMap<String, ZoneDwell>,
+    pub circle_dwell: &'a HashMap<String, CircleDwell>,
 }
 
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
@@ -55,7 +56,7 @@ impl SpatialRule for ZoneRule {
     }
 }
 
-/// Circle approach/recede from disk membership.
+/// Circle approach/recede from disk membership, with optional dwell / exit-debounce.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct RadiusRule;
 
@@ -70,13 +71,16 @@ impl SpatialRule for RadiusRule {
     ) {
         scratch.clear();
         spatial.circle_membership_at(ctx.position, scratch);
-        out.extend(circle_membership_transitions(
+        circle_membership_with_dwell(
             ctx.entity_id,
-            &state.inside_circle,
-            scratch,
             ctx.at_ms,
-        ));
-        std::mem::swap(&mut state.inside_circle, scratch);
+            scratch,
+            &mut state.inside_circle,
+            &mut state.circle_enter_pending,
+            &mut state.circle_exit_pending,
+            ctx.circle_dwell,
+            out,
+        );
     }
 }
 

@@ -13,6 +13,17 @@ pub struct ZoneDwell {
     pub min_outside_ms: Option<u64>,
 }
 
+/// Minimum continuous time inside / outside before emitting approach / recede for a circle.
+///
+/// `None` for a field means **no minimum** (immediate approach or recede when membership changes).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CircleDwell {
+    /// Emit [`Event::Approach`] only after the point has been inside the circle for this many ms.
+    pub min_inside_ms: Option<u64>,
+    /// Emit [`Event::Recede`] only after the point has been outside for this many ms.
+    pub min_outside_ms: Option<u64>,
+}
+
 /// A single historical position sample stored in the entity's ring buffer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryPoint {
@@ -39,6 +50,10 @@ pub struct EntityState {
     /// Zone id → first `at_ms` seen outside while logically inside (waiting for [`ZoneDwell::min_outside_ms`]).
     pub zone_exit_pending: HashMap<String, u64>,
     pub inside_circle: BTreeSet<String>,
+    /// Circle id → first `at_ms` seen inside while waiting for [`CircleDwell::min_inside_ms`].
+    pub circle_enter_pending: HashMap<String, u64>,
+    /// Circle id → first `at_ms` seen outside while logically inside (waiting for [`CircleDwell::min_outside_ms`]).
+    pub circle_exit_pending: HashMap<String, u64>,
     pub catalog_region: Option<String>,
 }
 
@@ -97,30 +112,6 @@ pub fn membership_transitions(
     out
 }
 
-pub fn circle_membership_transitions(
-    entity_id: &str,
-    previous: &BTreeSet<String>,
-    current: &BTreeSet<String>,
-    t_ms: u64,
-) -> Vec<Event> {
-    let mut out = Vec::new();
-    for gid in current.difference(previous) {
-        out.push(Event::Approach {
-            id: entity_id.to_string(),
-            circle: gid.clone(),
-            t_ms,
-        });
-    }
-    for gid in previous.difference(current) {
-        out.push(Event::Recede {
-            id: entity_id.to_string(),
-            circle: gid.clone(),
-            t_ms,
-        });
-    }
-    out
-}
-
 pub fn assignment_transition(
     entity_id: &str,
     previous: &Option<String>,
@@ -135,6 +126,89 @@ pub fn assignment_transition(
             region: current.clone(),
             t_ms,
         }]
+    }
+}
+
+/// Shared dwell logic for zone and circle membership.
+///
+/// `get_thresholds` returns `(min_inside_ms, min_outside_ms)` for a geometry id.
+/// `make_enter` / `make_exit` construct the appropriate event variant
+/// (`Enter`/`Exit` for zones, `Approach`/`Recede` for circles).
+#[allow(clippy::too_many_arguments)]
+fn membership_with_dwell_impl(
+    entity_id: &str,
+    at_ms: u64,
+    physical_inside: &BTreeSet<String>,
+    logical_inside: &mut BTreeSet<String>,
+    enter_pending: &mut HashMap<String, u64>,
+    exit_pending: &mut HashMap<String, u64>,
+    get_thresholds: impl Fn(&str) -> (u64, u64),
+    make_enter: impl Fn(String, String, u64) -> Event,
+    make_exit: impl Fn(String, String, u64) -> Event,
+    out: &mut Vec<Event>,
+) {
+    let mut ids: BTreeSet<String> = logical_inside.iter().cloned().collect();
+    ids.extend(physical_inside.iter().cloned());
+    ids.extend(enter_pending.keys().cloned());
+    ids.extend(exit_pending.keys().cloned());
+
+    for id in ids {
+        let (min_in, min_out) = get_thresholds(&id);
+        let phys = physical_inside.contains(&id);
+        let log = logical_inside.contains(&id);
+
+        if phys && log {
+            enter_pending.remove(&id);
+            exit_pending.remove(&id);
+            continue;
+        }
+
+        if phys && !log {
+            exit_pending.remove(&id);
+            if min_in == 0 {
+                logical_inside.insert(id.clone());
+                enter_pending.remove(&id);
+                out.push(make_enter(entity_id.to_string(), id.clone(), at_ms));
+            } else {
+                match enter_pending.get(&id).copied() {
+                    None => {
+                        enter_pending.insert(id.clone(), at_ms);
+                    }
+                    Some(t0) if at_ms.saturating_sub(t0) >= min_in => {
+                        logical_inside.insert(id.clone());
+                        enter_pending.remove(&id);
+                        out.push(make_enter(entity_id.to_string(), id.clone(), at_ms));
+                    }
+                    Some(_) => {}
+                }
+            }
+            continue;
+        }
+
+        if !phys && log {
+            enter_pending.remove(&id);
+            if min_out == 0 {
+                logical_inside.remove(&id);
+                exit_pending.remove(&id);
+                out.push(make_exit(entity_id.to_string(), id.clone(), at_ms));
+            } else {
+                match exit_pending.get(&id).copied() {
+                    None => {
+                        exit_pending.insert(id.clone(), at_ms);
+                    }
+                    Some(t0) if at_ms.saturating_sub(t0) >= min_out => {
+                        logical_inside.remove(&id);
+                        exit_pending.remove(&id);
+                        out.push(make_exit(entity_id.to_string(), id.clone(), at_ms));
+                    }
+                    Some(_) => {}
+                }
+            }
+            continue;
+        }
+
+        enter_pending.remove(&id);
+        exit_pending.remove(&id);
     }
 }
 
@@ -154,87 +228,66 @@ pub fn zone_membership_with_dwell(
     dwell_by_id: &HashMap<String, ZoneDwell>,
     out: &mut Vec<Event>,
 ) {
-    let mut zone_ids: BTreeSet<String> = logical_inside.iter().cloned().collect();
-    zone_ids.extend(physical_inside.iter().cloned());
-    zone_ids.extend(enter_pending.keys().cloned());
-    zone_ids.extend(exit_pending.keys().cloned());
+    membership_with_dwell_impl(
+        entity_id,
+        at_ms,
+        physical_inside,
+        logical_inside,
+        enter_pending,
+        exit_pending,
+        |id| {
+            let d = dwell_by_id.get(id).cloned().unwrap_or_default();
+            (d.min_inside_ms.unwrap_or(0), d.min_outside_ms.unwrap_or(0))
+        },
+        |eid, zone, t_ms| Event::Enter {
+            id: eid,
+            zone,
+            t_ms,
+        },
+        |eid, zone, t_ms| Event::Exit {
+            id: eid,
+            zone,
+            t_ms,
+        },
+        out,
+    );
+}
 
-    for z in zone_ids {
-        let dwell = dwell_by_id.get(&z).cloned().unwrap_or_default();
-        let min_in = dwell.min_inside_ms.unwrap_or(0);
-        let min_out = dwell.min_outside_ms.unwrap_or(0);
-        let phys = physical_inside.contains(&z);
-        let log = logical_inside.contains(&z);
-
-        if phys && log {
-            enter_pending.remove(&z);
-            exit_pending.remove(&z);
-            continue;
-        }
-
-        if phys && !log {
-            exit_pending.remove(&z);
-            if min_in == 0 {
-                logical_inside.insert(z.clone());
-                enter_pending.remove(&z);
-                out.push(Event::Enter {
-                    id: entity_id.to_string(),
-                    zone: z.clone(),
-                    t_ms: at_ms,
-                });
-            } else {
-                match enter_pending.get(&z).copied() {
-                    None => {
-                        enter_pending.insert(z.clone(), at_ms);
-                    }
-                    Some(t0) if at_ms.saturating_sub(t0) >= min_in => {
-                        logical_inside.insert(z.clone());
-                        enter_pending.remove(&z);
-                        out.push(Event::Enter {
-                            id: entity_id.to_string(),
-                            zone: z.clone(),
-                            t_ms: at_ms,
-                        });
-                    }
-                    Some(_) => {}
-                }
-            }
-            continue;
-        }
-
-        if !phys && log {
-            enter_pending.remove(&z);
-            if min_out == 0 {
-                logical_inside.remove(&z);
-                exit_pending.remove(&z);
-                out.push(Event::Exit {
-                    id: entity_id.to_string(),
-                    zone: z.clone(),
-                    t_ms: at_ms,
-                });
-            } else {
-                match exit_pending.get(&z).copied() {
-                    None => {
-                        exit_pending.insert(z.clone(), at_ms);
-                    }
-                    Some(t0) if at_ms.saturating_sub(t0) >= min_out => {
-                        logical_inside.remove(&z);
-                        exit_pending.remove(&z);
-                        out.push(Event::Exit {
-                            id: entity_id.to_string(),
-                            zone: z.clone(),
-                            t_ms: at_ms,
-                        });
-                    }
-                    Some(_) => {}
-                }
-            }
-            continue;
-        }
-
-        enter_pending.remove(&z);
-        exit_pending.remove(&z);
-    }
+/// Circle approach/recede with optional dwell / exit debounce.
+#[allow(clippy::too_many_arguments)]
+pub fn circle_membership_with_dwell(
+    entity_id: &str,
+    at_ms: u64,
+    physical_inside: &BTreeSet<String>,
+    logical_inside: &mut BTreeSet<String>,
+    enter_pending: &mut HashMap<String, u64>,
+    exit_pending: &mut HashMap<String, u64>,
+    dwell_by_id: &HashMap<String, CircleDwell>,
+    out: &mut Vec<Event>,
+) {
+    membership_with_dwell_impl(
+        entity_id,
+        at_ms,
+        physical_inside,
+        logical_inside,
+        enter_pending,
+        exit_pending,
+        |id| {
+            let d = dwell_by_id.get(id).cloned().unwrap_or_default();
+            (d.min_inside_ms.unwrap_or(0), d.min_outside_ms.unwrap_or(0))
+        },
+        |eid, circle, t_ms| Event::Approach {
+            id: eid,
+            circle,
+            t_ms,
+        },
+        |eid, circle, t_ms| Event::Recede {
+            id: eid,
+            circle,
+            t_ms,
+        },
+        out,
+    );
 }
 
 /// Stable ordering: entity id, observation time, tier, zone id, enter/approach before exit/recede.

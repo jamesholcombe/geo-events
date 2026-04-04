@@ -20,6 +20,13 @@ export interface ZoneOptions {
   };
 }
 
+export interface CircleOptions {
+  dwell?: {
+    minInsideMs?: number;
+    minOutsideMs?: number;
+  };
+}
+
 // Shape of the native node including methods added by new NAPI code.
 // This is replaced by the auto-generated index.d.ts after `npm run build`.
 interface NativeNode extends InstanceType<typeof GeoEngineNode> {
@@ -71,8 +78,20 @@ export class GeoEngine {
     return this;
   }
 
-  registerCircle(id: string, cx: number, cy: number, r: number): this {
-    this.node.registerCircle(id, cx, cy, r);
+  registerCircle(
+    id: string,
+    cx: number,
+    cy: number,
+    r: number,
+    options?: CircleOptions,
+  ): this {
+    const dwell = options?.dwell
+      ? {
+          minInsideMs: options.dwell.minInsideMs,
+          minOutsideMs: options.dwell.minOutsideMs,
+        }
+      : undefined;
+    this.node.registerCircle(id, cx, cy, r, dwell);
     return this;
   }
 
