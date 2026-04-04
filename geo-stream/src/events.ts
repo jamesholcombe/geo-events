@@ -2,7 +2,7 @@ import type { Polygon, MultiPolygon, Feature } from "geojson";
 import type {
   PointUpdateJs as PointUpdate,
   DwellOptionsJs as DwellOptions,
-} from "../index.js";
+} from "./native.js";
 
 export type { PointUpdate, DwellOptions };
 

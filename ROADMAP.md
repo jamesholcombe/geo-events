@@ -100,7 +100,6 @@ These define what a stable, reliable v1 looks like.
 - [x] `polygon-json` merged into `crates/spatial`
 - [x] Add missing tests: cross-type duplicate IDs, equal-timestamp updates
 - [ ] Dwell / debounce support for circles
-- [ ] Stabilise the NDJSON wire protocol to v1 (no breaking changes after this)
 
 ### v1.1 — Operability
 
@@ -118,7 +117,6 @@ These make geo-stream useful beyond direct Rust embedding.
 ### Client SDKs
 
 - [x] **TypeScript/Node.js SDK**: NAPI bindings (`crates/adapters/napi`); `GeoEngine` class; `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`; typed `GeoEvent` discriminated union and `GeoJsonPolygonInput`; pre-built native binaries for macOS/Linux/Windows; npm README
-- [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
 
 ### TypeScript adapters
 

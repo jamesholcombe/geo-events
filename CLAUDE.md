@@ -1,51 +1,6 @@
 # CLAUDE.md
 
-Working reference for this repository. See [AGENTS.md](AGENTS.md) for architectural invariants and [ROADMAP.md](ROADMAP.md) for current status.
-
----
-
-## What this project is
-
-A Rust-based, in-memory **geospatial stream processor**: location updates in → structured spatial events out (enter/exit, approach/recede, assignment changes). Developer-first; embeddable. Not a GIS library, database, or batch ETL.
-
----
-
-## Workspace layout
-
-```
-crates/engine/               # Core processing — GeoEngine trait, Engine, SpatialRule pipeline
-crates/state/                # EntityState, Event enum, membership transitions
-crates/spatial/              # Geometry, SpatialIndex trait, NaiveSpatialIndex (R-tree)
-crates/polygon-json/         # GeoJSON polygon parsing helper (30-line utility)
-crates/adapters/stdin-stdout/ # NDJSON line I/O
-crates/adapters/napi/        # Node.js NAPI bindings (feature-gated)
-crates/cli/                  # geo-stream binary
-protocol/                    # Wire contract: ndjson.md + schema/
-examples/                    # Sample NDJSON and GeoJSON files
-```
-
-## Where code belongs
-
-| What | Where |
-|------|-------|
-| New rule or orchestration | `crates/engine` |
-| New geometry or index behaviour | `crates/spatial` (no domain rules) |
-| New wire format or stdio handling | `crates/adapters/*` or `crates/cli`, update `protocol/` if contract changes |
-| Shared state shape or transitions | `crates/state` |
-
----
-
-## Key types and API
-
-- **`GeoEngine` trait** (`crates/engine`): zone registration + `process_event(&mut self, PointUpdate) -> Vec<Event>`
-- **`Engine` struct**: concrete impl; `process_batch`, `with_rules`, `register_zone_with_dwell` (plain `register_zone` uses default instant dwell)
-- **`PointUpdate`**: `{ id, x, y, t_ms }` — `t_ms` is Unix epoch milliseconds
-- **`Event` enum** (`crates/state`): `Enter`/`Exit`, `Approach`/`Recede`, `AssignmentChanged` — each carries `t_ms`
-- **`SpatialRule` trait**: composable pipeline; default order: `ZoneRule → RadiusRule → CatalogRule`
-- **`NaiveSpatialIndex`**: R-tree (rstar) on polygon bounding boxes + exact point-in-polygon; circles are a linear scan
-- **`sort_events_deterministic`**: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
-
----
+Working reference for this repository. See [ROADMAP.md](ROADMAP.md) for current status.
 
 ## Invariants (obey on every change)
 
@@ -91,5 +46,11 @@ CI runs: `fmt`, `clippy -D warnings`, `cargo test`, JSON Schema validation of ex
 - Designing around batch as the primary model
 - Implicit or shared mutable state
 - Leaking protocol types into the engine
+
+## Guidelines 
+
+- When making updates to code, consider whether you need to make docs updates.
+- Primarily this will be within `docs-site`. Use the docs skill if it exists.
+
 
 

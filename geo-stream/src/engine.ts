@@ -1,4 +1,4 @@
-import { GeoEngineNode } from "../index.js";
+import { GeoEngineNode } from "./native.js";
 import { RuleBuilder } from "./rules.js";
 import type {
   GeoEvent,
